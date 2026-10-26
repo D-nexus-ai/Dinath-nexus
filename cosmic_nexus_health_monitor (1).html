@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic-Nexus: Astronaut Health & Environment Monitor</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyan: { 400: '#22d3ee', 500: '#06b6d4', 900: '#164e63' },
+                        emerald: { 400: '#34d399', 500: '#10b981' },
+                        rose: { 500: '#f43f5e', 600: '#e11d48' },
+                        amber: { 400: '#fbbf24', 500: '#f59e0b' }
+                    },
+                    fontFamily: {
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.8); }
+        ::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.3); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(6, 182, 212, 0.6); }
+        
+        /* Sci-Fi Glow Effects */
+        .cyan-glow { box-shadow: 0 0 20px rgba(6, 182, 212, 0.25); }
+        .red-glow { box-shadow: 0 0 20px rgba(244, 63, 94, 0.3); }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+        }
+        .glass-panel-danger {
+            background: rgba(30, 10, 20, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        /* Side Menu Hover Zone & Pop-out */
+        #hover-trigger-zone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 24px;
+            height: 100vh;
+            z-index: 40;
+        }
+        #side-menu {
+            transform: translateX(-100%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #side-menu.open {
+            transform: translateX(0);
+        }
+        
+        /* Earth View Hero Background Overlay */
+        .earth-bg {
+            background-image: linear-gradient(to bottom, rgba(2, 6, 23, 0.35), rgba(2, 6, 23, 0.75)), 
+                              url('https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?q=80&w=2560&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans overflow-x-hidden selection:bg-cyan-500 selection:text-black bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
+
+    <!-- HOVER TRIGGER ZONE FOR POP-OUT SIDE MENU -->
+    <div id="hover-trigger-zone"></div>
+
+    <!-- POP-OUT SIDE MENU -->
+    <aside id="side-menu" class="fixed top-0 left-0 h-full w-72 glass-panel z-50 flex flex-col shadow-2xl border-r border-cyan-500/30">
+        <!-- Sidebar Header -->
+        <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-cyan-950/80 rounded-lg border border-cyan-500/40 text-cyan-400">
+                    <i data-lucide="orbit" class="w-6 h-6 animate-spin-slow"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-cyan-400 tracking-wider text-sm uppercase">Cosmic Nexus</h2>
+                    <p class="text-xs text-slate-400 font-mono">v4.9 OS • Deep Space</p>
+                </div>
+            </div>
+            <button id="close-menu-btn" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <!-- Sidebar Navigation -->
+        <nav class="flex-1 p-4 space-y-1.5 overflow-y-auto">
+            <div id="nav-status-badge" class="mb-4 p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" id="nav-dot"></span>
+                <span class="text-slate-300 font-mono font-bold" id="nav-status-text">LOCKED • AUTH REQUIRED</span>
+            </div>
+
+            <button onclick="switchTab('home')" id="nav-btn-home" class="nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-cyan-400 bg-cyan-950/40 border border-cyan-500/30">
+                <i data-lucide="home" class="w-4 h-4"></i>
+                <span>Home / Overview</span>
+            </button>
+
+            <button onclick="switchTab('profile')" id="nav-btn-profile" class="nav-item tab-locked w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-900/60">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="user-check" class="w-4 h-4"></i>
+                    <span>Astronaut Profile</span>
+                </div>
+                <i data-lucide="lock" class="w-3.5 h-3.5 lock-icon text-amber-500/80"></i>
+            </button>
+
+            <button onclick="switchTab('health')" id="nav-btn-health" class="nav-item tab-locked w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-900/60">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="activity" class="w-4 h-4"></i>
+                    <span>Human Bio-Health</span>
+                </div>
+                <i data-lucide="lock" class="w-3.5 h-3.5 lock-icon text-amber-500/80"></i>
+            </button>
+
+            <button onclick="switchTab('environment')" id="nav-btn-environment" class="nav-item tab-locked w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-900/60">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                    <span>Cabin Environment</span>
+                </div>
+                <i data-lucide="lock" class="w-3.5 h-3.5 lock-icon text-amber-500/80"></i>
+            </button>
+
+            <button onclick="switchTab('routine')" id="nav-btn-routine" class="nav-item tab-locked w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-900/60">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="calendar" class="w-4 h-4"></i>
+                    <span>Daily Routine Tracker</span>
+                </div>
+                <i data-lucide="lock" class="w-3.5 h-3.5 lock-icon text-amber-500/80"></i>
+            </button>
+
+            <button onclick="switchTab('companion')" id="nav-btn-companion" class="nav-item tab-locked w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-900/60">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="bot" class="w-4 h-4"></i>
+                    <span>AI Medical Companion</span>
+                </div>
+                <i data-lucide="lock" class="w-3.5 h-3.5 lock-icon text-amber-500/80"></i>
+            </button>
+
+            <button onclick="switchTab('tactics')" id="nav-btn-tactics" class="nav-item tab-locked w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-900/60">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="book-open" class="w-4 h-4"></i>
+                    <span>Tactics & Protocols</span>
+                </div>
+                <i data-lucide="lock" class="w-3.5 h-3.5 lock-icon text-amber-500/80"></i>
+            </button>
+        </nav>
+
+        <!-- Sidebar Footer -->
+        <div class="p-4 border-t border-slate-800/80">
+            <div class="text-xs text-slate-500 font-mono text-center">
+                <span>Hover edge or icon to expand menu</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- TOP BAR NAVIGATION -->
+    <header class="h-16 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30 px-4 md:px-8 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <button id="manual-menu-toggle" class="p-2 text-slate-400 hover:text-cyan-400 rounded-lg hover:bg-slate-900 border border-slate-800 transition-colors">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <i data-lucide="rocket" class="w-5 h-5 text-cyan-400"></i>
+                <span class="font-bold tracking-wider text-slate-100 hidden sm:inline">COSMIC-NEXUS</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30 font-mono">STATION OS</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <div id="auth-status-chip" class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400 font-mono">
+                <span class="w-2 h-2 rounded-full bg-amber-500" id="chip-status-dot"></span>
+                <span id="chip-status-text">UNAUTHENTICATED</span>
+            </div>
+
+            <!-- Sign In Header Button -->
+            <button id="top-signin-btn" onclick="openSignInModal()" class="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-semibold text-sm transition-all shadow-lg shadow-cyan-950/50">
+                <i data-lucide="log-in" class="w-4 h-4"></i>
+                <span>Sign In</span>
+            </button>
+
+            <!-- Sign Out Button (Hidden initially) -->
+            <button id="top-signout-btn" onclick="signOutAstronaut()" class="hidden flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 hover:bg-rose-900 text-sm font-semibold transition-all">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+                <span>Sign Out</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 space-y-8">
+
+        <!-- TAB 1: HOME / LANDING PAGE -->
+        <section id="tab-home" class="tab-content space-y-12">
+            <!-- Hero Banner -->
+            <div class="relative rounded-2xl overflow-hidden glass-panel earth-bg p-8 md:p-12 border border-cyan-500/30 shadow-2xl">
+                <div class="absolute -right-20 -top-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div class="max-w-3xl space-y-4 relative z-10">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-400 text-xs font-mono">
+                        <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Deep Space Health & Environmental Protocol
+                    </div>
+                    <h1 class="text-3xl md:text-5xl font-extrabold text-white tracking-tight leading-tight drop-shadow-md">
+                        Deep Space Vitality & Atmospheric Telemetry
+                    </h1>
+                    <p class="text-slate-200 text-base md:text-lg leading-relaxed drop-shadow">
+                        Cosmic-Nexus provides advanced bio-telemetry diagnostics, multi-sensor environmental matrices, real-time stress threshold alerts, and AI-driven pharmacological protocols for deep-space missions.
+                    </p>
+                    
+                    <!-- Action buttons (Hides when authenticated) -->
+                    <div id="home-auth-actions" class="pt-4 flex flex-wrap gap-4">
+                        <button onclick="scrollToRegistration()" class="px-6 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all flex items-center gap-2 shadow-lg shadow-cyan-950/50">
+                            <span>Register New Astronaut</span>
+                            <i data-lucide="arrow-down" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="openSignInModal()" class="px-6 py-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-cyan-500/40 font-bold text-sm transition-all flex items-center gap-2">
+                            <i data-lucide="key" class="w-4 h-4 text-cyan-400"></i>
+                            <span>Sign In With Credentials</span>
+                        </button>
+                    </div>
+
+                    <!-- Logged In Success Banner -->
+                    <div id="home-logged-in-banner" class="hidden pt-4">
+                        <div class="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 shadow-xl backdrop-blur-md font-mono text-sm">
+                            <div class="p-1 rounded-full bg-emerald-500/20 text-emerald-400">
+                                <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <span class="font-bold">You have signed in successfully.</span>
+                                <span id="home-signed-in-user" class="text-xs text-emerald-400/80 block">Telemetry Link Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EXPANDED ABOUT US SECTION -->
+            <div class="glass-panel p-8 rounded-2xl border border-cyan-500/30 space-y-6">
+                <div class="flex items-center gap-3 border-b border-slate-800 pb-4">
+                    <div class="p-2.5 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-500/40">
+                        <i data-lucide="globe" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-white tracking-wide">About Cosmic-Nexus System</h2>
+                        <p class="text-xs text-slate-400 font-mono">Deep Space Bio-Telemetry & Planetary Habitability Command</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-slate-300 text-sm leading-relaxed">
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-bold text-cyan-400 flex items-center gap-2">
+                            <i data-lucide="target" class="w-4 h-4"></i> Our Deep-Space Mission
+                        </h3>
+                        <p>
+                            Engineered for cislunar habitats, Mars transit vehicles, and orbital research outposts, Cosmic-Nexus bridges terrestrial clinical medicine with zero-gravity countermeasures. As missions push beyond Earth's magnetosphere, crew members encounter unique physiological threats including Galactic Cosmic Rays (GCR), Solar Particle Events (SPE), fluid shifts, and acute neuro-ocular strain.
+                        </p>
+                    </div>
+
+                    <div class="space-y-4">
+                        <h3 class="text-lg font-bold text-cyan-400 flex items-center gap-2">
+                            <i data-lucide="cpu" class="w-4 h-4"></i> Autonomous Medical Intelligence
+                        </h3>
+                        <p>
+                            Because light-speed communication latency can exceed 20 minutes between Earth ground control and deep-space habitats, Cosmic-Nexus incorporates an offline, edge-computed Medical Diagnostic Engine containing 100+ space and terrestrial pathology countermeasures.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- REGISTRATION PLATFORM CONTAINER -->
+            <div id="registration-section-wrapper" class="pt-8 border-t border-slate-800">
+                <div class="max-w-3xl mx-auto glass-panel p-8 rounded-2xl border border-cyan-500/30 space-y-6">
+                    <div class="space-y-2 border-b border-slate-800 pb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-500/40">
+                                <i data-lucide="user-plus" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-2xl font-bold text-white">Astronaut Registration Platform</h2>
+                                <p class="text-xs text-slate-400 font-mono">Enter credentials to generate official Deep Space Medical ID</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form id="registration-form" onsubmit="handleRegistration(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-mono text-slate-400 mb-1">FULL NAME *</label>
+                                <input type="text" id="reg-fullname" required placeholder="Dr. Alex Vance" class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-mono text-slate-400 mb-1">COMMUNICATION EMAIL *</label>
+                                <input type="email" id="reg-email" required placeholder="alex.vance@nasa.gov" class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-mono text-slate-400 mb-1">CALL SIGN / HANDLE *</label>
+                                <input type="text" id="reg-callsign" required placeholder="VANGUARD-1" class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-mono text-slate-400 mb-1">BLOOD TYPE *</label>
+                                <select id="reg-bloodtype" required class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                                    <option value="" disabled selected>Select Blood Group</option>
+                                    <option value="A+">A Positive (A+)</option>
+                                    <option value="A-">A Negative (A-)</option>
+                                    <option value="B+">B Positive (B+)</option>
+                                    <option value="B-">B Negative (B-)</option>
+                                    <option value="AB+">AB Positive (AB+)</option>
+                                    <option value="AB-">AB Negative (AB-)</option>
+                                    <option value="O+">O Positive (O+)</option>
+                                    <option value="O-">O Negative (O-)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-mono text-slate-400 mb-1">SPACE AGENCY *</label>
+                                <select id="reg-agency" required class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                                    <option value="NASA">NASA (United States)</option>
+                                    <option value="ESA">ESA (Europe)</option>
+                                    <option value="JAXA">JAXA (Japan)</option>
+                                    <option value="CSA">CSA (Canada)</option>
+                                    <option value="COMMERCIAL">Commercial Expedition</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-mono text-slate-400 mb-1">CREW ROLE *</label>
+                                <select id="reg-role" required class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                                    <option value="Commander">Commander</option>
+                                    <option value="Flight Specialist">Flight Specialist</option>
+                                    <option value="Medical Officer">Chief Medical Officer</option>
+                                    <option value="Payload Engineer">Payload Systems Engineer</option>
+                                    <option value="Pilot">Pilot Specialist</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">DESIGNATED MISSION *</label>
+                            <input type="text" id="reg-mission" required placeholder="Artemis IX - Deep Space Habitat" class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div class="pt-4">
+                            <button type="submit" class="w-full py-3.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-base transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-950">
+                                <i data-lucide="shield-check" class="w-5 h-5"></i>
+                                <span>Register & Generate Astronaut ID</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: ASTRONAUT PROFILE -->
+        <section id="tab-profile" class="tab-content hidden space-y-6">
+            <div class="glass-panel p-6 rounded-2xl border border-cyan-500/30 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-16 h-16 rounded-2xl bg-cyan-950 border border-cyan-500/50 flex items-center justify-center text-cyan-400 font-mono text-2xl font-bold" id="profile-avatar-initials">
+                        AX
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-white" id="profile-card-name">Astronaut Profile</h2>
+                        <div class="flex items-center gap-2 text-xs font-mono text-slate-400 mt-1">
+                            <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30" id="profile-card-role">Role</span>
+                            <span>•</span>
+                            <span id="profile-card-agency">Agency</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-right">
+                    <div class="text-slate-400">ASSIGNED ASTRONAUT ID</div>
+                    <div class="text-cyan-400 font-bold text-base" id="profile-card-id">ASTRO-0000</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-xl border border-slate-800 space-y-4">
+                    <h3 class="text-sm font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="dna" class="w-4 h-4"></i> Biological Dossier
+                    </h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Blood Type:</span>
+                            <span class="font-bold text-rose-400 font-mono" id="profile-blood">-</span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Call Sign:</span>
+                            <span class="font-mono text-slate-200" id="profile-callsign">-</span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Email:</span>
+                            <span class="font-mono text-slate-200" id="profile-email">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-xl border border-slate-800 space-y-4">
+                    <h3 class="text-sm font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="compass" class="w-4 h-4"></i> Assignment Details
+                    </h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Space Agency:</span>
+                            <span class="font-bold text-slate-200" id="profile-agency-detail">-</span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Mission Target:</span>
+                            <span class="text-slate-200 font-mono" id="profile-mission">-</span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Clearance Level:</span>
+                            <span class="text-emerald-400 font-mono font-bold">LEVEL-5 MEDICAL</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-xl border border-slate-800 space-y-4">
+                    <h3 class="text-sm font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="activity" class="w-4 h-4"></i> Telemetry Status
+                    </h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Bio-Link Status:</span>
+                            <span class="text-emerald-400 font-mono flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> ONLINE
+                            </span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Sub-dermal Patch:</span>
+                            <span class="text-slate-200 font-mono">CALIBRATED</span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-800 pb-2">
+                            <span class="text-slate-400">Daily Logs Filed:</span>
+                            <span class="text-cyan-400 font-mono font-bold" id="profile-log-count">0 ENTRIES</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 3: HUMAN HEALTH & EXPANDED SENSORS -->
+        <section id="tab-health" class="tab-content hidden space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="heart-pulse" class="w-6 h-6 text-rose-500"></i>
+                        Astronaut Physiological Telemetry Matrix
+                    </h2>
+                    <p class="text-xs text-slate-400 font-mono">Real-time multi-sensor biometrics, acute stress spikes, and neuro-ocular pressure telemetry</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="px-3 py-1.5 rounded-lg bg-rose-950/80 border border-rose-500/40 text-rose-300 font-mono text-xs flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                        <span id="health-danger-indicator">CRITICAL STRESS & FLUID SHIFT MONITOR</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Health Danger Graph Canvas -->
+            <div class="glass-panel p-6 rounded-2xl border border-rose-500/30 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-mono text-rose-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="line-chart" class="w-4 h-4"></i> Comprehensive Bio-Telemetry Waveform & Stress Index
+                    </h3>
+                    <span class="text-xs font-mono text-slate-400">Threshold Alert Zone &gt; 80%</span>
+                </div>
+                <div class="h-64 w-full relative">
+                    <canvas id="health-danger-canvas" class="w-full h-full block rounded-lg bg-slate-950 border border-slate-800"></canvas>
+                </div>
+            </div>
+
+            <!-- Expanded Bio-Sensors Grid (12 Sensors) -->
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">ECG / HEART RATE</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1" id="val-ecg">78 BPM</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Normal Sinus</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">BLOOD OXYGEN (SpO2)</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1" id="val-spo2">98%</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Optimal Saturation</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">RESPIRATION RATE</div>
+                    <div class="text-xl font-bold font-mono text-amber-400 mt-1" id="val-resp">16 RPM</div>
+                    <div class="text-[10px] text-amber-400 font-mono mt-1">Mild Float</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">SKIN TEMPERATURE</div>
+                    <div class="text-xl font-bold font-mono text-slate-100 mt-1" id="val-temp">36.8 °C</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Equilibrium</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">INTRACRANIAL PRESSURE</div>
+                    <div class="text-xl font-bold font-mono text-rose-400 mt-1" id="val-icp">14.2 mmHg</div>
+                    <div class="text-[10px] text-amber-400 font-mono mt-1">SANS Watch Active</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">CORTISOL STRESS INDEX</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1" id="val-cortisol">3.4 ug/dL</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Normal Range</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">BLOOD GLUCOSE</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1" id="val-glucose">92 mg/dL</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Stable Glycemia</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">HYDRATION STATUS</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1" id="val-hydration">94%</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Optimal Fluid</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">MUSCLE TONE / EMG</div>
+                    <div class="text-xl font-bold font-mono text-amber-400 mt-1" id="val-emg">45 uV</div>
+                    <div class="text-[10px] text-amber-400 font-mono mt-1">ARED Load Needed</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">BRAIN WAVE (EEG ALPHA)</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1" id="val-eeg">10.5 Hz</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Alert & Focused</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">BONE RESORPTION MARKER</div>
+                    <div class="text-xl font-bold font-mono text-rose-400 mt-1" id="val-bone">1.28 CTX</div>
+                    <div class="text-[10px] text-rose-400 font-mono mt-1">Biphosphonate Watch</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">VESTIBULAR STABILITY</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1" id="val-vest">98.2%</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">No Vertigo Risk</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: ENVIRONMENT & EXPANDED SENSORS -->
+        <section id="tab-environment" class="tab-content hidden space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="shield-alert" class="w-6 h-6 text-amber-400"></i>
+                        Cabin Environmental Telemetry Matrix
+                    </h2>
+                    <p class="text-xs text-slate-400 font-mono">Multi-vector GCR radiation flux, atmospheric trace gases, pressure dynamics & toxic gas sensors</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="px-3 py-1.5 rounded-lg bg-amber-950/80 border border-amber-500/40 text-amber-300 font-mono text-xs flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                        <span id="env-danger-indicator">SPE RADIATION ALERT: MODERATE FLUX</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Environmental Danger Graph Canvas -->
+            <div class="glass-panel p-6 rounded-2xl border border-amber-500/30 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-mono text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                        <i data-lucide="activity" class="w-4 h-4"></i> Solar Particle Radiation Flux & Atmospheric Pressure Profile
+                    </h3>
+                    <span class="text-xs font-mono text-slate-400">Safe Dose Ceiling: 50 uSv/h</span>
+                </div>
+                <div class="h-64 w-full relative">
+                    <canvas id="env-danger-canvas" class="w-full h-full block rounded-lg bg-slate-950 border border-slate-800"></canvas>
+                </div>
+            </div>
+
+            <!-- Expanded Environmental Sensors Grid (12 Sensors) -->
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">CABIN PRESSURE</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1">101.3 kPa</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Nominal Standard</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">CO2 CONCENTRATION</div>
+                    <div class="text-xl font-bold font-mono text-amber-400 mt-1">420 PPM</div>
+                    <div class="text-[10px] text-amber-400 font-mono mt-1">Scrubber Active</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">OXYGEN (O2) LEVEL</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1">20.9%</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Optimal Oxygenation</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">RADIATION DOSE (GCR)</div>
+                    <div class="text-xl font-bold font-mono text-rose-400 mt-1" id="val-rad">42.4 uSv/h</div>
+                    <div class="text-[10px] text-rose-400 font-mono mt-1">Solar Wind Active</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">CABIN HUMIDITY</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1">48.5%</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Dew Point Stable</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">AMBIENT TEMPERATURE</div>
+                    <div class="text-xl font-bold font-mono text-slate-100 mt-1">22.4 °C</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Thermal Comfort</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">TRACE AMMONIA (NH3)</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1">0.02 PPM</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Zero Leakage</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">CARBON MONOXIDE (CO)</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1">0.1 PPM</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Safe Air Quality</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">SOLAR PARTICLE FLUX</div>
+                    <div class="text-xl font-bold font-mono text-amber-400 mt-1">1,450 pfu</div>
+                    <div class="text-[10px] text-amber-400 font-mono mt-1">Proton Watch</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">ELECTROMAGNETIC FIELD</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1">12.8 uT</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Shield Active</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">MICROBIAL AIR LOAD</div>
+                    <div class="text-xl font-bold font-mono text-emerald-400 mt-1">14 CFU/m³</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">HEPA Filtration</div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                    <div class="text-[11px] text-slate-400 font-mono">VIBRATION DENSITY</div>
+                    <div class="text-xl font-bold font-mono text-cyan-400 mt-1">0.04 g</div>
+                    <div class="text-[10px] text-emerald-400 font-mono mt-1">Station Quiet</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 5: DAILY ROUTINE TRACKER -->
+        <section id="tab-routine" class="tab-content hidden space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="calendar" class="w-6 h-6 text-cyan-400"></i>
+                        Daily Routine & Log Entry
+                    </h2>
+                    <p class="text-xs text-slate-400 font-mono">Record twice-daily workouts, hydration, sleep, caloric intake, and fatigue metrics</p>
+                </div>
+            </div>
+
+            <!-- Log Form -->
+            <div class="glass-panel p-6 rounded-2xl border border-cyan-500/30">
+                <form id="routine-form" onsubmit="handleRoutineSubmit(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">EXERCISE TYPE *</label>
+                            <select id="routine-exercise" required class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                                <option value="ARED (Resistive Exercise Device)">ARED (Resistive Exercise Device)</option>
+                                <option value="T-2 Treadmill">T-2 Space Treadmill</option>
+                                <option value="Cycle Ergometer (CEVIS)">Cycle Ergometer (CEVIS)</option>
+                                <option value="EVA Microgravity Simulation">EVA Microgravity Simulation</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">DURATION (MINUTES) *</label>
+                            <input type="number" id="routine-duration" required min="10" max="300" placeholder="60" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">FATIGUE INDEX (1-10) *</label>
+                            <input type="number" id="routine-fatigue" required min="1" max="10" placeholder="4" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">MOOD / WELLNESS (1-10) *</label>
+                            <input type="number" id="routine-mood" required min="1" max="10" placeholder="8" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">WATER INTAKE (LITERS) *</label>
+                            <input type="number" step="0.1" id="routine-water" required min="0.5" max="10" placeholder="3.2" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">BLOOD PRESSURE (SYS/DIA) *</label>
+                            <input type="text" id="routine-bp" required placeholder="118/78" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">SLEEP DURATION & QUALITY *</label>
+                            <input type="text" id="routine-sleep" required placeholder="7.5 hrs (Score: 8/10)" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-mono text-slate-400 mb-1">CALORIC INTAKE (KCAL) *</label>
+                            <input type="number" id="routine-calories" required min="1000" max="6000" placeholder="2850" class="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                        </div>
+
+                        <div class="flex items-end">
+                            <button type="submit" class="w-full py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all flex items-center justify-center gap-2">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Save Daily Log Entry</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Routine History Log Table -->
+            <div class="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
+                <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                    <h3 class="text-sm font-mono text-cyan-400 uppercase tracking-wider">Historical Routine Log Records</h3>
+                    <span class="text-xs text-slate-500 font-mono" id="log-count-indicator">0 Logs Saved</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-300">
+                        <thead class="bg-slate-900/80 text-xs font-mono text-slate-400 uppercase">
+                            <tr>
+                                <th class="p-3">Timestamp</th>
+                                <th class="p-3">Exercise</th>
+                                <th class="p-3">Duration</th>
+                                <th class="p-3">Fatigue</th>
+                                <th class="p-3">Mood</th>
+                                <th class="p-3">Water</th>
+                                <th class="p-3">BP</th>
+                                <th class="p-3">Calories</th>
+                            </tr>
+                        </thead>
+                        <tbody id="routine-log-tbody" class="divide-y divide-slate-800/60 font-mono text-xs">
+                            <tr>
+                                <td colspan="8" class="p-4 text-center text-slate-500">No daily logs recorded yet. Use the form above to submit your first entry.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 6: AI MEDICAL COMPANION -->
+        <section id="tab-companion" class="tab-content hidden space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="bot" class="w-6 h-6 text-cyan-400"></i>
+                        AI Space Medical Diagnostic Companion
+                    </h2>
+                    <p class="text-xs text-slate-400 font-mono">100+ Pathology database. Type pathology name or symptom & press Enter to reveal protocols and measurements.</p>
+                </div>
+            </div>
+
+            <!-- Search Input Box -->
+            <div class="glass-panel p-4 rounded-2xl border border-cyan-500/30">
+                <div class="relative">
+                    <input type="text" id="ai-search-input" onkeydown="handleAiSearchKeyDown(event)" placeholder="Search 100+ space/earth pathologies (e.g. SANS, Radiation Sickness, Bone Density Loss, Hypoxia, Motion Sickness)..." class="w-full pl-11 pr-28 py-3.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono text-sm">
+                    <i data-lucide="search" class="w-5 h-5 text-slate-400 absolute left-3.5 top-4"></i>
+                    <button onclick="executeAiSearch()" class="absolute right-2 top-2 bottom-2 px-4 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all flex items-center gap-1">
+                        <span>Execute Search</span>
+                        <i data-lucide="corner-down-left" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Container for Pop-out Disease Results -->
+            <div id="ai-disease-results" class="space-y-4">
+                <div id="ai-empty-state" class="glass-panel p-12 rounded-2xl border border-slate-800 text-center space-y-3">
+                    <div class="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 text-slate-500 flex items-center justify-center mx-auto">
+                        <i data-lucide="search-x" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-slate-300 font-bold">No Diseases Displayed</h3>
+                    <p class="text-slate-500 text-xs max-w-md mx-auto">Pathologies remain hidden until searched. Type a disease name or medical symptom above and press Enter to pull diagnostics and exact measurements to take.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 7: EXPANDED TACTICS & RECOMMENDATIONS -->
+        <section id="tab-tactics" class="tab-content hidden space-y-6">
+            <div>
+                <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <i data-lucide="book-open" class="w-6 h-6 text-emerald-400"></i>
+                    Expanded Bio-Astronautics & Habitation Countermeasure Protocols
+                </h2>
+                <p class="text-xs text-slate-400 font-mono">NASA, ESA, and SpaceX standardized clinical guidelines for long-duration deep space and interplanetary missions</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Protocol 1 -->
+                <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold text-cyan-400 flex items-center gap-2">
+                            <i data-lucide="bone" class="w-5 h-5"></i> 1. Bone Density & Trabecular Resorption Mitigation
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-mono text-[10px]">OSSEOUS PROTOCOL</span>
+                    </div>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        Execute 2.5 hours of daily high-resistance loading using the Advanced Resistive Exercise Device (ARED). Administer bisphosphonates (Alendronate 70mg weekly or Zoledronic Acid 5mg IV annual infusion) combined with 2000 IU Vitamin D3 and 1200mg elemental calcium daily to counteract the 1.5% monthly trabecular bone mineral density loss experienced in microgravity.
+                    </p>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>Frequency: Daily ARED / Weekly Oral</span>
+                        <span class="text-cyan-400">Compliance Target: &gt;95%</span>
+                    </div>
+                </div>
+
+                <!-- Protocol 2 -->
+                <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                            <i data-lucide="eye" class="w-5 h-5"></i> 2. SANS (Spaceflight Associated Neuro-ocular Syndrome) Prevention
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-400 font-mono text-[10px]">NEURO-OCULAR</span>
+                    </div>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        Utilize Lower Body Negative Pressure (LBNP) chambers for 4 hours daily during sleep preparation cycles to counteract cephalad fluid shifts. If optic disc edema grade ≥ 2 is detected via optical coherence tomography (OCT), administer Acetazolamide 250mg twice daily and enforce strict intermittent thigh cuff compression schedules.
+                    </p>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>Frequency: 4 Hours Daily LBNP</span>
+                        <span class="text-amber-400">ICP Ceiling: &lt; 15 mmHg</span>
+                    </div>
+                </div>
+
+                <!-- Protocol 3 -->
+                <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold text-rose-400 flex items-center gap-2">
+                            <i data-lucide="shield" class="w-5 h-5"></i> 3. Solar Particle Event (SPE) & Galactic Cosmic Ray Defense
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-950 text-rose-400 font-mono text-[10px]">RADIATION SHIELDING</span>
+                    </div>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        When solar proton flux exceeds 50 uSv/h or station dosimeters register sudden GCR spikes, immediately evacuate crew to the water-walled central habitat storm shelter. Administer radioprotective prophylactic agents (Amifostine 500mg IV infusion or oral tocopherol/antioxidant cocktails) and maintain continuous real-time dosimetry badges.
+                    </p>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>Action Trigger: &gt; 50 uSv/h Flux</span>
+                        <span class="text-rose-400">Max Dose: 500 mSv/Mission</span>
+                    </div>
+                </div>
+
+                <!-- Protocol 4 -->
+                <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+                            <i data-lucide="sun" class="w-5 h-5"></i> 4. Circadian Entrainment & Melatonin Regulation
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 font-mono text-[10px]">CIRCADIAN RHYTHM</span>
+                    </div>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        Combat the 16-sunrise orbital disorientation cycle by deploying high-intensity 460nm wavelength blue-enriched LED lighting panels at 06:00 UTC to suppress melatonin and elevate alertness. Administer 0.5mg exogenous melatonin at 21:00 UTC for sleep induction. Reserve short-acting hypnotics (Zolpidem 5mg) exclusively for acute mission stress.
+                    </p>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>Lighting Cycle: 460nm Blue at Dawn</span>
+                        <span class="text-emerald-400">Sleep Target: 8.0 hrs</span>
+                    </div>
+                </div>
+
+                <!-- Protocol 5 -->
+                <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold text-cyan-400 flex items-center gap-2">
+                            <i data-lucide="droplet" class="w-5 h-5"></i> 5. Hydration & Nephrolithiasis (Kidney Stone) Prevention
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 font-mono text-[10px]">RENAL PROTECTION</span>
+                    </div>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        Microgravity induces chronic hypercalciuria due to bone resorption. Enforce minimum fluid intake of 3.5 liters per day utilizing recycled station greywater. Supplement with Potassium Citrate (20 mEq 3x daily) to maintain urinary pH between 6.5 and 7.0, preventing calcium oxalate crystal precipitation in renal tubules.
+                    </p>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>Hydration Goal: &gt; 3.5L Daily</span>
+                        <span class="text-cyan-400">Urine pH Target: 6.8</span>
+                    </div>
+                </div>
+
+                <!-- Protocol 6 -->
+                <div class="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                            <i data-lucide="wind" class="w-5 h-5"></i> 6. Atmospheric Contamination & Emergency Scrubber Protocol
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-400 font-mono text-[10px]">ATMOSPHERIC SAFETY</span>
+                    </div>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        Maintain continuous lithium hydroxide (LiOH) and amine-bed carbon dioxide scrubbers to keep cabin CO2 below 500 PPM. In the event of trace hydrazine (NH3) or cabin depressurization alarms, don emergency 100% O2 closed-circuit rebreathers within 15 seconds, seal module bulkheads, and activate the high-pressure nitrogen buffer tanks.
+                    </p>
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                        <span>CO2 Ceiling: &lt; 500 PPM</span>
+                        <span class="text-amber-400">Mask Donning: &lt; 15s</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- SIGN-IN MODAL DIALOG -->
+    <div id="signin-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-panel w-full max-w-md p-6 rounded-2xl border border-cyan-500/40 space-y-6 shadow-2xl relative">
+            <button onclick="closeSignInModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+
+            <div class="space-y-2">
+                <div class="w-12 h-12 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-500/40 flex items-center justify-center">
+                    <i data-lucide="key" class="w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">Astronaut Sign In</h3>
+                <p class="text-xs text-slate-400 font-mono">Enter your registered email and assigned Astronaut ID</p>
+            </div>
+
+            <form id="signin-form" onsubmit="handleSignInSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-mono text-slate-400 mb-1">COMMUNICATION EMAIL *</label>
+                    <input type="email" id="signin-email" required placeholder="alex.vance@nasa.gov" class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-mono text-slate-400 mb-1">ASSIGNED ASTRONAUT ID *</label>
+                    <input type="text" id="signin-id" required placeholder="ASTRO-NX7-8942" class="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm font-mono uppercase">
+                </div>
+
+                <div id="signin-error" class="hidden text-xs text-rose-400 bg-rose-950/60 border border-rose-500/40 p-3 rounded-lg font-mono">
+                    Invalid credentials. Please verify your Email and Astronaut ID or register below.
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all flex items-center justify-center gap-2">
+                        <i data-lucide="log-in" class="w-4 h-4"></i>
+                        <span>Authenticate & Access System</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="text-center pt-2 border-t border-slate-800">
+                <p class="text-xs text-slate-400">Not registered yet?</p>
+                <button onclick="closeSignInModal(); scrollToRegistration();" class="text-xs text-cyan-400 hover:underline font-mono mt-1">
+                    Register Astronaut Platform Down Below &rarr;
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOADING SCREEN OVERLAY -->
+    <div id="loading-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-panel p-8 rounded-2xl border border-cyan-500/40 text-center space-y-6 max-w-sm w-full mx-4 shadow-2xl">
+            <div class="relative w-20 h-20 mx-auto">
+                <div class="absolute inset-0 rounded-full border-4 border-cyan-500/20"></div>
+                <div class="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center text-cyan-400">
+                    <i data-lucide="orbit" class="w-8 h-8"></i>
+                </div>
+            </div>
+            <div class="space-y-2">
+                <h3 class="text-lg font-bold text-white font-mono" id="loading-title">AUTHENTICATING...</h3>
+                <p class="text-xs text-slate-400 font-mono" id="loading-subtitle">Verifying deep-space encrypted telemetry credentials</p>
+            </div>
+            <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                <div id="loading-bar" class="bg-cyan-400 h-full w-0 transition-all duration-300 ease-linear"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT ENGINE -->
+    <script>
+        // --- 100+ DISEASES INTERNAL DATABASE ---
+        const DISEASE_DATABASE = [
+            { id: 1, name: "SANS (Spaceflight Associated Neuro-ocular Syndrome)", category: "Microgravity", severity: "High", symptoms: "Visual acuity loss, optic disc edema, globe flattening, cotton wool spots.", measurements: "Apply LBNP (Lower Body Negative Pressure) 4 hrs/day. Prescribe Acetazolamide 250mg 2x daily. Perform optic sheath ultrasound." },
+            { id: 2, name: "Acute Radiation Sickness (ARS)", category: "Deep Space", severity: "Critical", symptoms: "Nausea, fatigue, bone marrow suppression, absolute lymphocyte count drop.", measurements: "Retreat to radiation storm shelter immediately. Administer Filgrastim 5 mcg/kg/day SC. Ondansetron 8mg IV for emesis." },
+            { id: 3, name: "Microgravity Osteopenia / Bone Density Loss", category: "Microgravity", severity: "Moderate", symptoms: "Accelerated trabecular bone resorption, hypercalciuria, elevated fracture risk.", measurements: "ARED load exercise 2.5 hrs/day. Zoledronic Acid 5mg IV or Alendronate 70mg weekly. Calcium 1200mg + Vit D3 2000 IU." },
+            { id: 4, name: "Orthostatic Intolerance Post-Landing", category: "Microgravity", severity: "Moderate", symptoms: "Presyncope, severe tachycardia, hypotension upon returning to gravity.", measurements: "Fluid loading (1L saline + salt tablets 2 hrs prior to re-entry). Wear full-body anti-g suit pressurized to 1.5 psi." },
+            { id: 5, name: "Space Motion Sickness (SMS)", category: "Neuro-vestibular", severity: "Low-Moderate", symptoms: "Nausea, spatial disorientation, stomach awareness, vomiting.", measurements: "Promethazine 25-50mg IM/oral every 8 hours. Rest head against fixed restraint. Avoid rapid head movements." },
+            { id: 6, name: "Hypoxia (Cabin Depressurization)", category: "Atmospheric", severity: "Critical", symptoms: "Cyanosis, cognitive decline, shortness of breath, confusion, loss of consciousness.", measurements: "Don emergency 100% O2 flight mask. Initiate emergency cabin repressurization. Hyperbaric oxygen protocol if needed." },
+            { id: 7, name: "Hypercapnia (CO2 Toxicity)", category: "Atmospheric", severity: "High", symptoms: "Throbbing headache, dyspnea, flushed skin, mental lethargy, elevated BP.", measurements: "Replace LiOH CO2 scrubbers immediately. Increase cabin ventilation. Administer O2 therapy via nasal cannula at 4L/min." },
+            { id: 8, name: "Sub-dermal Decompression Sickness (Bends)", category: "Extravehicular", severity: "High", symptoms: "Joint pain, skin pruritus, neurological tingling, chest tightness post-EVA.", measurements: "100% O2 breathing protocol for 4 hours. Cabin hyperbaric repressurization to 14.7 psi. In-suit hyper-oxygenation." },
+            { id: 9, name: "Cardiac Dysrhythmia & Microgravity Atrophy", category: "Cardiovascular", severity: "High", symptoms: "Palpitations, ventricular ectopy, reduced cardiac mass.", measurements: "Cycle ergometer interval training. Amiodarone 200mg daily if persistent PVCs. Potassium/Magnesium supplement balance." },
+            { id: 10, name: "Space Anemia (Erythrocyte Destruction)", category: "Hematology", severity: "Moderate", symptoms: "Unexplained fatigue, pale conjunctiva, 10-15% reduction in red blood cell mass.", measurements: "Monitor reticulocyte counts weekly. Recombinant Human Erythropoietin (EPO) if hematocrit < 30%. Iron supplementation 65mg." },
+            { id: 11, name: "Nephrolithiasis (Kidney Stones)", category: "Urology", severity: "High", symptoms: "Severe flank pain, hematuria, dysuria due to urinary calcium accumulation.", measurements: "Potassium citrate 20mEq 3x daily to alkalinize urine. Hydration > 3.5L/day. Tamsulosin 0.4mg for stone passage." },
+            { id: 12, name: "Circadian Rhythm Phase Shift", category: "Psychological", severity: "Low", symptoms: "Insomnia, daytime sleepiness, mood volatility due to 16 sunrises/day.", measurements: "Exogenous Melatonin 0.5mg at 21:00 UTC. Dynamic light therapy (460nm blue light at 06:00 UTC). Zolpidem 5mg for acute sleep." },
+            { id: 13, name: "Cephalad Fluid Shift & Facial Edema", category: "Vascular", severity: "Low", symptoms: "Puffy face, nasal congestion, diminished taste and smell sensation.", measurements: "Incline sleep restraint by 5 degrees. Intermittent pneumatic thigh compression cuffs 2 hrs daily." },
+            { id: 14, name: "Toxic Hydrazine Contamination (EVA)", category: "Toxicology", severity: "Critical", symptoms: "Skin chemical burns, pulmonary edema, tremor, liver dysfunction.", measurements: "Emergency decontamination airlock flush. Pyridoxine (Vit B6) 25mg/kg IV antidote. Remove contaminated EVA suit immediately." },
+            { id: 15, name: "Microbial Dermatitis (Space Cabin Humidity)", category: "Dermatology", severity: "Low-Moderate", symptoms: "Erythematous rash, fungal itching in skin folds due to perspiration trapped in zero-g.", measurements: "Topical Clotrimazole 1% cream 2x daily. Antiseptic chlorhexidine wipes. Maintain cabin relative humidity below 55%." }
+        ];
+
+        const pathologiesList = [
+            "Dehydration", "Barotrauma", "Hypothermia", "Hyperthermia", "Upper Respiratory Infection", "Otitis Media", "Conjunctivitis",
+            "Contact Dermatitis", "Insomnia", "Anxiety Neurosis", "Corneal Abrasion", "Gastroenteritis", "Kidney Infection", "Hypertension",
+            "Hypotension", "Muscle Atrophy", "Tendonitis", "Vertebral Elongation Pain", "Peripheral Neuropathy", "Solar Burn (UV)",
+            "GCR Cytogenetic Damage", "Sepsis", "Pneumothorax", "Appendicitis", "Gastric Ulcer", "Urinary Tract Infection", "Migraine",
+            "Vestibular Neuritis", "Motion Intolerance", "Electrolyte Imbalance", "Hyperkalemia", "Hypokalemia", "Hyponatremia", "Hypercalcemia",
+            "Hypocalcemia", "Rhabdomyolysis", "Compartment Syndrome", "Cellulitis", "Abscess", "Dental Caries", "Pulpitis", "Otalgia",
+            "Epistaxis", "Pharyngitis", "Bronchitis", "Pneumonia", "Atelectasis", "Pulmonary Embolism", "Deep Vein Thrombosis", "Arrhythmia",
+            "Tachycardia", "Bradycardia", "Myocarditis", "Pericarditis", "Angina Pectoris", "Myocardial Infarction", "Stroke (TIA)",
+            "Cerebral Edema", "Seizure", "Syncope", "Vertigo", "Tinnitus", "Acoustic Trauma", "Dry Eye Syndrome", "Glaucoma Spike",
+            "Cataract (Radiation)", "Retinal Detachment", "Skin Ulcer", "Burn Thermal", "Burn Chemical", "Frostbite", "Toxic Inhalation",
+            "Ammonia Leak Exposure", "Freon Exposure", "Halon Toxicity", "CO Poisoning", "Methane Exposure", "Particulate Dust Inhalation",
+            "Hypoglycemia", "Hyperglycemia", "Ketoacidosis", "Adrenal Fatigue", "Thyroid Dysfunction", "Vitamin D Deficiency",
+            "B12 Deficiency Anemia", "Folate Deficiency", "Scurvy", "Gout", "Osteoarthritis", "Bursitis", "Synovitis", "Herniated Disc",
+            "Sciatica", "Intercostal Neuralgia", "Panic Attack", "Depressive Episode", "Adjustment Disorder", "Confusional State",
+            "Sleep Apnea", "Restless Leg Syndrome", "Contact Lens Keratitis", "Foreign Body in Eye", "Laceration", "Contusion", "Bone Fracture"
+        ];
+
+        pathologiesList.forEach((name, idx) => {
+            const id = 16 + idx;
+            DISEASE_DATABASE.push({
+                id: id,
+                name: name,
+                category: idx % 2 === 0 ? "Deep Space Pathology" : "Terrestrial / Microgravity",
+                severity: idx % 4 === 0 ? "Critical" : (idx % 3 === 0 ? "High" : "Moderate"),
+                symptoms: `Standard clinical symptoms associated with ${name.toLowerCase()}, microgravity acceleration vectors, orbital fatigue.`,
+                measurements: `Administer standard space protocol for ${name}. Monitor vitals every 2 hours, hydrate 3L/day, dosage: 250mg anti-inflammatory or target protocol per Chief Medical Officer.`
+            });
+        });
+
+        // --- APP STATE ---
+        let currentAstronaut = null;
+        let dailyLogs = [];
+        let healthCanvas, envCanvas;
+        let healthCtx, envCtx;
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            lucide.createIcons();
+            initSideMenu();
+            initCanvas();
+            loadProfileFromStorage();
+            updateUIState();
+            startCanvasAnimations();
+        };
+
+        // --- SIDE MENU HOVER POP-OUT & RETRACT ---
+        function initSideMenu() {
+            const sideMenu = document.getElementById('side-menu');
+            const hoverZone = document.getElementById('hover-trigger-zone');
+            const closeBtn = document.getElementById('close-menu-btn');
+            const manualToggle = document.getElementById('manual-menu-toggle');
+
+            hoverZone.addEventListener('mouseenter', () => {
+                sideMenu.classList.add('open');
+            });
+
+            sideMenu.addEventListener('mouseleave', () => {
+                sideMenu.classList.remove('open');
+            });
+
+            closeBtn.addEventListener('click', () => {
+                sideMenu.classList.remove('open');
+            });
+
+            manualToggle.addEventListener('click', () => {
+                sideMenu.classList.toggle('open');
+            });
+        }
+
+        // --- LOCAL STORAGE & AUTH LOGIC ---
+        function loadProfileFromStorage() {
+            const savedUser = localStorage.getItem('cosmic_nexus_astronaut');
+            const savedLogs = localStorage.getItem('cosmic_nexus_logs');
+            
+            if (savedUser) {
+                currentAstronaut = JSON.parse(savedUser);
+            }
+            if (savedLogs) {
+                dailyLogs = JSON.parse(savedLogs);
+            }
+        }
+
+        function updateUIState() {
+            const lockedButtons = document.querySelectorAll('.tab-locked');
+            const regWrapper = document.getElementById('registration-section-wrapper');
+            const homeAuthActions = document.getElementById('home-auth-actions');
+            const homeLoggedInBanner = document.getElementById('home-logged-in-banner');
+            const homeSignedUser = document.getElementById('home-signed-in-user');
+            const navDot = document.getElementById('nav-dot');
+            const navStatusText = document.getElementById('nav-status-text');
+            const chipDot = document.getElementById('chip-status-dot');
+            const chipText = document.getElementById('chip-status-text');
+            const signinBtn = document.getElementById('top-signin-btn');
+            const signoutBtn = document.getElementById('top-signout-btn');
+
+            if (currentAstronaut) {
+                lockedButtons.forEach(btn => {
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    const lockIcon = btn.querySelector('.lock-icon');
+                    if (lockIcon) lockIcon.style.display = 'none';
+                });
+
+                if (regWrapper) regWrapper.style.display = 'none';
+                if (homeAuthActions) homeAuthActions.classList.add('hidden');
+                
+                if (homeLoggedInBanner) {
+                    homeLoggedInBanner.classList.remove('hidden');
+                    if (homeSignedUser) {
+                        homeSignedUser.innerText = `Astronaut: ${currentAstronaut.fullname} (${currentAstronaut.astroId})`;
+                    }
+                }
+
+                navDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+                navStatusText.innerText = "AUTHENTICATED • ONLINE";
+                chipDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+                chipText.innerText = `ACTIVE: ${currentAstronaut.callsign}`;
+
+                signinBtn.classList.add('hidden');
+                signoutBtn.classList.remove('hidden');
+
+                populateProfileCard();
+                renderRoutineLogs();
+            } else {
+                lockedButtons.forEach(btn => {
+                    const lockIcon = btn.querySelector('.lock-icon');
+                    if (lockIcon) lockIcon.style.display = 'inline-block';
+                });
+
+                if (regWrapper) regWrapper.style.display = 'block';
+                if (homeAuthActions) homeAuthActions.classList.remove('hidden');
+                if (homeLoggedInBanner) homeLoggedInBanner.classList.add('hidden');
+
+                navDot.className = "w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse";
+                navStatusText.innerText = "LOCKED • AUTH REQUIRED";
+                chipDot.className = "w-2 h-2 rounded-full bg-amber-500";
+                chipText.innerText = "UNAUTHENTICATED";
+
+                signinBtn.classList.remove('hidden');
+                signoutBtn.classList.add('hidden');
+            }
+        }
+
+        function switchTab(tabId) {
+            if (tabId !== 'home' && !currentAstronaut) {
+                openSignInModal();
+                alert("ACCESS DENIED: Please register or sign in with your Astronaut credentials to view restricted modules.");
+                return;
+            }
+
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            
+            const target = document.getElementById(`tab-${tabId}`);
+            if (target) target.classList.remove('hidden');
+
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                btn.classList.remove('text-cyan-400', 'bg-cyan-950/40', 'border', 'border-cyan-500/30');
+                btn.classList.add('text-slate-400');
+            });
+            const activeNav = document.getElementById(`nav-btn-${tabId}`);
+            if (activeNav) {
+                activeNav.classList.add('text-cyan-400', 'bg-cyan-950/40', 'border', 'border-cyan-500/30');
+                activeNav.classList.remove('text-slate-400');
+            }
+
+            document.getElementById('side-menu').classList.remove('open');
+        }
+
+        // --- REGISTRATION LOGIC ---
+        function handleRegistration(e) {
+            e.preventDefault();
+
+            const fullname = document.getElementById('reg-fullname').value.trim();
+            const email = document.getElementById('reg-email').value.trim();
+            const callsign = document.getElementById('reg-callsign').value.trim();
+            const blood = document.getElementById('reg-bloodtype').value;
+            const agency = document.getElementById('reg-agency').value;
+            const role = document.getElementById('reg-role').value;
+            const mission = document.getElementById('reg-mission').value.trim();
+
+            if (!fullname || !email || !callsign || !blood) return;
+
+            const astroId = `ASTRO-NX-${Math.floor(1000 + Math.random() * 9000)}`;
+
+            const newAstronaut = {
+                fullname,
+                email,
+                callsign,
+                blood,
+                agency,
+                role,
+                mission,
+                astroId
+            };
+
+            showLoadingOverlay("REGISTERING ASTRONAUT & GENERATING ID...", "Encoding biodata into station system database...", () => {
+                localStorage.setItem('cosmic_nexus_astronaut', JSON.stringify(newAstronaut));
+                currentAstronaut = newAstronaut;
+                document.getElementById('registration-form').reset();
+                updateUIState();
+                switchTab('profile');
+            });
+        }
+
+        function scrollToRegistration() {
+            switchTab('home');
+            const regEl = document.getElementById('registration-section-wrapper');
+            if (regEl) regEl.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // --- SIGN IN LOGIC ---
+        function openSignInModal() {
+            const modal = document.getElementById('signin-modal');
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            document.getElementById('signin-error').classList.add('hidden');
+        }
+
+        function closeSignInModal() {
+            const modal = document.getElementById('signin-modal');
+            modal.classList.add('opacity-0', 'pointer-events-none');
+        }
+
+        function handleSignInSubmit(e) {
+            e.preventDefault();
+            const email = document.getElementById('signin-email').value.trim().toLowerCase();
+            const id = document.getElementById('signin-id').value.trim().toUpperCase();
+
+            const savedUserStr = localStorage.getItem('cosmic_nexus_astronaut');
+            
+            if (!savedUserStr) {
+                document.getElementById('signin-error').classList.remove('hidden');
+                return;
+            }
+
+            const savedUser = JSON.parse(savedUserStr);
+
+            if (savedUser.email.toLowerCase() === email && savedUser.astroId.toUpperCase() === id) {
+                closeSignInModal();
+                showLoadingOverlay("AUTHENTICATING CREDENTIALS...", "Validating Astronaut ID with Deep Space Relay...", () => {
+                    currentAstronaut = savedUser;
+                    document.getElementById('signin-form').reset();
+                    updateUIState();
+                    switchTab('profile');
+                });
+            } else {
+                document.getElementById('signin-error').classList.remove('hidden');
+            }
+        }
+
+        function signOutAstronaut() {
+            showLoadingOverlay("TERMINATING TELEMETRY SESSION...", "Securely signing out and clearing station cache...", () => {
+                currentAstronaut = null;
+                updateUIState();
+                switchTab('home');
+            });
+        }
+
+        function showLoadingOverlay(title, subtitle, callback) {
+            const overlay = document.getElementById('loading-overlay');
+            const bar = document.getElementById('loading-bar');
+            document.getElementById('loading-title').innerText = title;
+            document.getElementById('loading-subtitle').innerText = subtitle;
+
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+            bar.style.width = '0%';
+
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 2.5;
+                bar.style.width = `${progress}%`;
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        overlay.classList.add('opacity-0', 'pointer-events-none');
+                        if (callback) callback();
+                    }, 300);
+                }
+            }, 100);
+        }
+
+        // --- PROFILE DISPLAY ---
+        function populateProfileCard() {
+            if (!currentAstronaut) return;
+
+            const initials = currentAstronaut.fullname.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            document.getElementById('profile-avatar-initials').innerText = initials || "AX";
+            document.getElementById('profile-card-name').innerText = currentAstronaut.fullname;
+            document.getElementById('profile-card-role').innerText = currentAstronaut.role;
+            document.getElementById('profile-card-agency').innerText = currentAstronaut.agency;
+            document.getElementById('profile-card-id').innerText = currentAstronaut.astroId;
+
+            document.getElementById('profile-blood').innerText = currentAstronaut.blood;
+            document.getElementById('profile-callsign').innerText = currentAstronaut.callsign;
+            document.getElementById('profile-email').innerText = currentAstronaut.email;
+            document.getElementById('profile-agency-detail').innerText = currentAstronaut.agency;
+            document.getElementById('profile-mission').innerText = currentAstronaut.mission;
+            document.getElementById('profile-log-count').innerText = `${dailyLogs.length} ENTRIES`;
+        }
+
+        // --- ROUTINE LOGIC ---
+        function handleRoutineSubmit(e) {
+            e.preventDefault();
+
+            const entry = {
+                timestamp: new Date().toLocaleString(),
+                exercise: document.getElementById('routine-exercise').value,
+                duration: document.getElementById('routine-duration').value + ' mins',
+                fatigue: document.getElementById('routine-fatigue').value + '/10',
+                mood: document.getElementById('routine-mood').value + '/10',
+                water: document.getElementById('routine-water').value + ' L',
+                bp: document.getElementById('routine-bp').value,
+                sleep: document.getElementById('routine-sleep').value,
+                calories: document.getElementById('routine-calories').value + ' kcal'
+            };
+
+            dailyLogs.unshift(entry);
+            localStorage.setItem('cosmic_nexus_logs', JSON.stringify(dailyLogs));
+
+            document.getElementById('routine-form').reset();
+            renderRoutineLogs();
+            if (currentAstronaut) populateProfileCard();
+        }
+
+        function renderRoutineLogs() {
+            const tbody = document.getElementById('routine-log-tbody');
+            const indicator = document.getElementById('log-count-indicator');
+            
+            if (dailyLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-500">No daily logs recorded yet. Use the form above to submit your first entry.</td></tr>`;
+                indicator.innerText = `0 Logs Saved`;
+                return;
+            }
+
+            indicator.innerText = `${dailyLogs.length} Logs Saved`;
+            tbody.innerHTML = dailyLogs.map(log => `
+                <tr class="hover:bg-slate-900/40">
+                    <td class="p-3 text-cyan-400 font-mono text-[11px]">${log.timestamp}</td>
+                    <td class="p-3 text-slate-200">${log.exercise}</td>
+                    <td class="p-3">${log.duration}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-500/30">${log.fatigue}</span></td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30">${log.mood}</span></td>
+                    <td class="p-3 text-cyan-300">${log.water}</td>
+                    <td class="p-3">${log.bp}</td>
+                    <td class="p-3 text-rose-300">${log.calories}</td>
+                </tr>
+            `).join('');
+        }
+
+        // --- AI MEDICAL COMPANION ---
+        function handleAiSearchKeyDown(e) {
+            if (e.key === 'Enter') {
+                executeAiSearch();
+            }
+        }
+
+        function executeAiSearch() {
+            const query = document.getElementById('ai-search-input').value.trim().toLowerCase();
+            const resultsContainer = document.getElementById('ai-disease-results');
+
+            if (!query) {
+                resultsContainer.innerHTML = `
+                    <div id="ai-empty-state" class="glass-panel p-12 rounded-2xl border border-slate-800 text-center space-y-3">
+                        <div class="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 text-slate-500 flex items-center justify-center mx-auto">
+                            <i data-lucide="search-x" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="text-slate-300 font-bold">No Diseases Displayed</h3>
+                        <p class="text-slate-500 text-xs max-w-md mx-auto">Pathologies remain hidden until searched. Type a disease name or medical symptom above and press Enter to pull diagnostics and exact measurements to take.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            const matches = DISEASE_DATABASE.filter(d => 
+                d.name.toLowerCase().includes(query) || 
+                d.category.toLowerCase().includes(query) || 
+                d.symptoms.toLowerCase().includes(query)
+            );
+
+            if (matches.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="glass-panel p-8 rounded-2xl border border-rose-500/30 text-center space-y-2">
+                        <h3 class="text-rose-400 font-bold">No Pathologies Matched "${query}"</h3>
+                        <p class="text-slate-400 text-xs font-mono">Try searching keywords like "SANS", "Radiation", "Bone", "Hypoxia", "Heart", or "Toxicity".</p>
+                    </div>
+                `;
+                return;
+            }
+
+            resultsContainer.innerHTML = matches.map(d => `
+                <div class="glass-panel p-6 rounded-2xl border border-cyan-500/30 space-y-4 hover:border-cyan-400 transition-all shadow-xl">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-3">
+                            <span class="p-2 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-500/30 font-mono text-xs font-bold">#${d.id}</span>
+                            <h3 class="text-lg font-bold text-white">${d.name}</h3>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2.5 py-1 rounded bg-slate-900 text-slate-400 text-xs font-mono border border-slate-800">${d.category}</span>
+                            <span class="px-2.5 py-1 rounded text-xs font-mono font-bold ${d.severity === 'Critical' ? 'bg-rose-950 text-rose-400 border border-rose-500/40' : 'bg-amber-950 text-amber-400 border border-amber-500/40'}">${d.severity}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div class="space-y-1 bg-slate-950/50 p-3 rounded-lg border border-slate-800/80">
+                            <span class="text-xs font-mono text-slate-400 uppercase tracking-wider block">Clinical Symptoms & Risk Vectors:</span>
+                            <p class="text-slate-300 text-xs leading-relaxed">${d.symptoms}</p>
+                        </div>
+
+                        <div class="space-y-1 bg-cyan-950/20 p-3 rounded-lg border border-cyan-500/20">
+                            <span class="text-xs font-mono text-cyan-400 uppercase tracking-wider block">Required Countermeasures & Medications:</span>
+                            <p class="text-cyan-200 text-xs font-mono leading-relaxed">${d.measurements}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        // --- CANVAS ANIMATIONS ---
+        function initCanvas() {
+            healthCanvas = document.getElementById('health-danger-canvas');
+            envCanvas = document.getElementById('env-danger-canvas');
+
+            resizeCanvases();
+            window.addEventListener('resize', resizeCanvases);
+        }
+
+        function resizeCanvases() {
+            if (healthCanvas && healthCanvas.parentElement) {
+                healthCanvas.width = healthCanvas.parentElement.clientWidth || 600;
+                healthCanvas.height = healthCanvas.parentElement.clientHeight || 256;
+                healthCtx = healthCanvas.getContext('2d');
+            }
+            if (envCanvas && envCanvas.parentElement) {
+                envCanvas.width = envCanvas.parentElement.clientWidth || 600;
+                envCanvas.height = envCanvas.parentElement.clientHeight || 256;
+                envCtx = envCanvas.getContext('2d');
+            }
+        }
+
+        let step = 0;
+        function startCanvasAnimations() {
+            function render() {
+                step += 0.04;
+                drawHealthGraph();
+                drawEnvGraph();
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        function drawHealthGraph() {
+            if (!healthCanvas) healthCanvas = document.getElementById('health-danger-canvas');
+            if (!healthCanvas) return;
+            if (!healthCtx) healthCtx = healthCanvas.getContext('2d');
+            if (!healthCtx) return;
+
+            const w = healthCanvas.width;
+            const h = healthCanvas.height;
+            if (w === 0 || h === 0) return;
+
+            healthCtx.clearRect(0, 0, w, h);
+
+            healthCtx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
+            healthCtx.lineWidth = 1;
+            for (let y = 0; y < h; y += 30) {
+                healthCtx.beginPath();
+                healthCtx.moveTo(0, y);
+                healthCtx.lineTo(w, y);
+                healthCtx.stroke();
+            }
+
+            const dangerY = h * 0.35;
+            healthCtx.strokeStyle = 'rgba(244, 63, 94, 0.7)';
+            healthCtx.lineWidth = 1.5;
+            healthCtx.setLineDash([6, 4]);
+            healthCtx.beginPath();
+            healthCtx.moveTo(0, dangerY);
+            healthCtx.lineTo(w, dangerY);
+            healthCtx.stroke();
+            healthCtx.setLineDash([]);
+
+            healthCtx.fillStyle = 'rgba(244, 63, 94, 0.9)';
+            healthCtx.font = '11px monospace';
+            healthCtx.fillText('ACUTE PHYSIOLOGICAL DANGER THRESHOLD (80%)', 12, dangerY - 8);
+
+            healthCtx.beginPath();
+            healthCtx.strokeStyle = '#f43f5e';
+            healthCtx.lineWidth = 2.5;
+
+            for (let x = 0; x < w; x += 4) {
+                const noise = Math.sin(x * 0.02 + step) * 18 + Math.cos(x * 0.05 - step) * 12;
+                const ecgPos = (x + step * 40) % 200;
+                let spike = 0;
+                if (ecgPos > 80 && ecgPos < 100) {
+                    spike = -65 * Math.sin((ecgPos - 80) * (Math.PI / 20));
+                }
+                const y = h * 0.65 + noise + spike;
+
+                if (x === 0) healthCtx.moveTo(x, y);
+                else healthCtx.lineTo(x, y);
+            }
+            healthCtx.stroke();
+        }
+
+        function drawEnvGraph() {
+            if (!envCanvas) envCanvas = document.getElementById('env-danger-canvas');
+            if (!envCanvas) return;
+            if (!envCtx) envCtx = envCanvas.getContext('2d');
+            if (!envCtx) return;
+
+            const w = envCanvas.width;
+            const h = envCanvas.height;
+            if (w === 0 || h === 0) return;
+
+            envCtx.clearRect(0, 0, w, h);
+
+            envCtx.strokeStyle = 'rgba(30, 41, 59, 0.6)';
+            envCtx.lineWidth = 1;
+            for (let y = 0; y < h; y += 30) {
+                envCtx.beginPath();
+                envCtx.moveTo(0, y);
+                envCtx.lineTo(w, y);
+                envCtx.stroke();
+            }
+
+            const safeY = h * 0.35;
+            envCtx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+            envCtx.lineWidth = 1.5;
+            envCtx.setLineDash([6, 4]);
+            envCtx.beginPath();
+            envCtx.moveTo(0, safeY);
+            envCtx.lineTo(w, safeY);
+            envCtx.stroke();
+            envCtx.setLineDash([]);
+
+            envCtx.fillStyle = 'rgba(251, 191, 36, 0.9)';
+            envCtx.font = '11px monospace';
+            envCtx.fillText('SPE RADIATION SAFE CEILING (50 uSv/h)', 12, safeY - 8);
+
+            envCtx.beginPath();
+            envCtx.strokeStyle = '#fbbf24';
+            envCtx.lineWidth = 2.5;
+
+            for (let x = 0; x < w; x += 4) {
+                const wave = Math.sin(x * 0.015 + step * 0.8) * 30 + Math.sin(x * 0.03 - step * 1.2) * 10;
+                const y = h * 0.65 + wave;
+
+                if (x === 0) envCtx.moveTo(x, y);
+                else envCtx.lineTo(x, y);
+            }
+            envCtx.stroke();
+        }
+    </script>
+</body>
+</html>
