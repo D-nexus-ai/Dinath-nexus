@@ -1,5 +1,5 @@
 # Dinath-nexus
- COSMIC-NEXUS · Astronaut Health & Cabin Simulation
+## COSMIC-NEXUS · Astronaut Health & Cabin Simulation
 
 A lightweight, zero-dependency, standalone **HTML, CSS & JavaScript** application.
 
