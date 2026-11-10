@@ -1,24 +1,19 @@
-"""mars_mission.py - ASTRA Earth-to-Mars mission replay.
+"""mars_mission.py - ASTRA Earth-to-Mars mission replay (mission plug-in).
 
 EDUCATIONAL DEMONSTRATION. ALL DATA ARE SIMULATED AND FICTIONAL. This is NOT a validated
 physiological, radiation, or spacecraft-trajectory model and must not be used for real operations.
 
-Public API (used by app.py)
-    PAGE                         sidebar page name
-    telemetry()                  1,000-row, timestamp-indexed pandas DataFrame (cached)
-    get_snapshot(i_or_timestamp) complete sensor snapshot (dict of native Python types)
-    apply_snapshot(i, state)     write the 19 ASTRA variables (+ exercise_type) into st.session_state
-    sync_session(page)           call once per run in app.py, before current_values()
-    render_mission_page(evaluate_rules, render_alerts, status_label)
-Patch app.py:  python mars_mission.py --patch app.py     (4 small edits, writes app.py.bak)
-Self-test:     python mars_mission.py --selftest app.py
+Mission plug-in interface (see astra_ui.py): LABEL, sync_session(active, visible), render_console(evaluate_rules).
+Other public helpers: telemetry(), get_snapshot(i_or_timestamp), snapshot_values(i), apply_snapshot(i, state),
+advance(state), render_svg(i).  To add another mission, write a module with the same three plug-in names and
+register it in MISSION_SOURCES in app.py.
 """
 from __future__ import annotations
 
-import base64
+import hashlib
 import html
+import marshal
 import math
-import sys
 import textwrap
 from functools import lru_cache
 
@@ -26,7 +21,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-PAGE = "Earth–Mars Mission"
+import astra_ui as ui
+
+LABEL = "Earth → Mars mission"
 N, SEED, DAY = 1000, 2026, 86400.0
 EPOCH = pd.Timestamp("2026-12-01 14:00:00")          # fictional T0 (UTC)
 ASTRA_VARS = ["heart_rate", "spo2", "respiration", "skin_temp", "systolic", "diastolic", "fatigue", "sleep",
@@ -338,12 +335,16 @@ def apply_snapshot(i, state=None):
 # ----------------------------------------------------------------------------- playback state
 SPEEDS = [0.5, 1, 2, 4, 8, 16, 32]
 TICK = 0.4                                                # seconds between animation frames
+PAUSE_OPTIONS = ["Off", "HIGH hazards", "Any hazard"]
+PAUSE_RANK = {"Off": 9, "HIGH hazards": 2, "Any hazard": 1}
+TREND_WINDOWS = {"Last 60 samples": 60, "Last 250 samples": 250, "Full mission": None}
 
 
 def init_state(ss=None):
     ss = st.session_state if ss is None else ss
-    for k, v in {"mm_idx": 0, "mm_slider": 0, "mm_playing": False, "mm_speed": 4, "mm_acc": 0.0, "mm_link": False,
-                 "mm_visited": False, "mm_applied": -1}.items():
+    for k, v in {"mm_idx": 0, "mm_slider": 0, "mm_playing": False, "mm_speed": 4, "mm_acc": 0.0, "mm_pause_on": "HIGH hazards",
+                 "mm_notified": 0, "mm_ack": [], "mm_trend": "heart_rate", "mm_window": "Full mission",
+                 "mm_alert_sig": None, "mm_alerts": None, "mm_eps": None}.items():
         if k not in ss:
             ss[k] = v
 
@@ -359,16 +360,44 @@ def advance(ss):
     ss["mm_slider"] = int(ss["mm_idx"])
 
 
+def ensure_alerts(evaluate_rules, ss=None):
+    """Evaluate ASTRA's own rules on every sample once (re-done only if the rule function itself changes)."""
+    ss = st.session_state if ss is None else ss
+    init_state(ss)
+    sig = hashlib.md5(marshal.dumps(evaluate_rules.__code__)).hexdigest()
+    if ss["mm_alert_sig"] != sig:
+        ss["mm_alerts"] = [evaluate_rules(snapshot_values(i)) for i in range(N)]
+        ss["mm_eps"] = ui.build_episodes(ss["mm_alerts"])
+        ss["mm_alert_sig"] = sig
+
+
+def notify(ss, i):
+    """Hazards that began between the last evaluated sample and i (forward movement only); moves the marker."""
+    new = ui.new_since(ss["mm_eps"], ss["mm_notified"], i)
+    ss["mm_notified"] = i
+    return new
+
+
+def tick(ss):
+    """One playback step: advance, detect hazards that just began, auto-pause if requested. Returns the new hazards."""
+    was = ss["mm_playing"]
+    advance(ss)
+    new = notify(ss, int(ss["mm_idx"]))
+    if new and was and ss["mm_playing"] and any(ui.LEVEL_RANK[e["level"]] >= PAUSE_RANK[ss["mm_pause_on"]] for e in new):
+        ss["mm_playing"] = False
+    return new
+
+
 def _cb_toggle():
     ss = st.session_state
     if not ss.mm_playing and ss.mm_idx >= N - 1:
-        ss.mm_idx, ss.mm_acc, ss.mm_slider = 0, 0.0, 0
+        ss.mm_idx, ss.mm_acc, ss.mm_slider, ss.mm_notified = 0, 0.0, 0, 0
     ss.mm_playing = not ss.mm_playing
 
 
 def _cb_reset():
     ss = st.session_state
-    ss.mm_idx = ss.mm_slider = 0; ss.mm_acc = 0.0; ss.mm_playing = False
+    ss.mm_idx = ss.mm_slider = ss.mm_notified = 0; ss.mm_acc = 0.0; ss.mm_playing = False; ss.mm_ack = []
 
 
 def _cb_slider():
@@ -380,16 +409,19 @@ def _cb_jump(i):
     ss.mm_idx = ss.mm_slider = int(i); ss.mm_playing = False
 
 
-def sync_session(page):
-    """Call in app.py right after the page radio and BEFORE current_values()."""
+def _cb_ack():
+    ss = st.session_state
+    ss.mm_ack = sorted(set(ss.mm_ack) | {e["id"] for e in ui.active_at(ss.mm_eps, int(ss.mm_idx))})
+
+
+def sync_session(active, visible=True):
+    """Plug-in hook, called by app.py on every run BEFORE current_values()."""
     init_state()
     ss = st.session_state
-    if page != PAGE:
+    if not (active and visible):
         ss.mm_playing = False                              # replay never runs in the background
-    if ss.mm_link:                                         # re-applied every run: Streamlit drops widget keys of hidden pages
-        apply_snapshot(ss.mm_idx)
-        st.sidebar.success(f"Dashboards linked to Mars replay ({fmt_met(telemetry().met_s.iat[ss.mm_idx])}); inputs are "
-                           f"driven by the replay. Switch the link off on the '{PAGE}' page to edit manually.")
+    if active:
+        apply_snapshot(ss.mm_idx)                          # re-applied every run: Streamlit drops widget keys of hidden pages
 
 
 # ----------------------------------------------------------------------------- SVG rendering
@@ -682,154 +714,84 @@ def render_svg(i: int) -> str:
     return "".join(o)
 
 
-# ----------------------------------------------------------------------------- Streamlit page
+# ----------------------------------------------------------------------------- Streamlit console
 @lru_cache(maxsize=1)
 def _csv() -> str:
     return telemetry().reset_index().to_csv(index=False)
 
 
-def _live(evaluate_rules, render_alerts, status_label):
+@lru_cache(maxsize=1)
+def _met_labels():
+    return telemetry().met_label.tolist()
+
+
+@lru_cache(maxsize=32)
+def _series(var):
+    return telemetry()[var].astype(float).tolist()
+
+
+def _bands():
+    short = {"SPE": "Solar particle event", "CREW": "Crew anomaly", "CABIN": "Cabin anomaly"}
+    return [(short[k], v[1], v[4], "#ff5d6c" if k == "CABIN" else "#ffb454") for k, v in EVENTS.items()]
+
+
+def _live(evaluate_rules):
     ss, was = st.session_state, st.session_state.mm_playing
-    advance(ss)                                                       # 1) move the single shared index
+    new = tick(ss)                                                    # 1) move the single shared index (+ hazard detection)
     st.slider("⏱ Time-warp: drag to jump to any of the 1,000 timestamps", 0, N - 1, key="mm_slider", on_change=_cb_slider)
     i = int(ss.mm_idx)
-    if ss.mm_link:
-        apply_snapshot(i)                                              # 2) ASTRA session variables = snapshot i
+    apply_snapshot(i)                                                  # 2) ASTRA session variables = snapshot i
     rec = get_snapshot(i)
-    st.markdown('<img style="width:100%;border-radius:14px" src="data:image/svg+xml;base64,'
-                + base64.b64encode(render_svg(i).encode()).decode() + '">', unsafe_allow_html=True)   # 3) frame i
-    vals = snapshot_values(i)                                          # 4) telemetry + alerts from the same snapshot i
-    alerts = evaluate_rules(vals)
-    c = st.columns(6)
-    for col, lab, v in zip(c, ["Heart rate", "SpO₂", "Cabin CO₂", "Oxygen", "Radiation", "Fatigue"],
-                           [f"{vals['heart_rate']:.0f} bpm", f"{vals['spo2']:.0f}%", f"{vals['co2']:,.0f} ppm",
-                            f"{vals['oxygen']:.1f}%", f"{vals['radiation']:.2f}", f"{vals['fatigue']:.0f}/10"]):
-        col.metric(lab, v)
-    st.write("Status:", status_label(alerts), "·", f"{rec['met_label']} · {rec['phase']}")
-    render_alerts(alerts)
+    st.markdown(ui.img_html(render_svg(i), "width:100%;border-radius:14px"), unsafe_allow_html=True)   # 3) frame i
+    vals = snapshot_values(i)
+    alerts = evaluate_rules(vals)                                      # 4) ASTRA rules on the same snapshot i
+    if new:
+        ui.toast_episodes(new, lambda k: _met_labels()[k])             # 5) hazard notifications
+    hist = {k: v for k, v in telemetry()[ASTRA_VARS].iloc[max(0, i - 59):i + 1].to_dict("list").items()}
+    st.markdown(ui.status_bar_html(alerts, f"{rec['phase']} · {rec['met_label']} · sample {i + 1}/{N}"), unsafe_allow_html=True)
+    left, right = st.columns([5, 3])
+    left.markdown(ui.tiles_html(vals, ui.var_levels(alerts), hist), unsafe_allow_html=True)
+    with right:
+        ui.notification_center(ss.mm_eps, i, set(ss.mm_ack), lambda k: _met_labels()[k], _cb_ack)
+    with st.expander("📈 Trend explorer: any variable over the whole mission", expanded=True):
+        c1, c2 = st.columns([2, 3])
+        c1.selectbox("Variable", list(ui.VAR_LABELS), index=list(ui.VAR_LABELS).index(ss.mm_trend), key="mm_trend_w",
+                     format_func=ui.VAR_LABELS.get, on_change=lambda: ss.__setitem__("mm_trend", ss.mm_trend_w))
+        c2.radio("Window", list(TREND_WINDOWS), index=list(TREND_WINDOWS).index(ss.mm_window), horizontal=True, key="mm_window_w",
+                 on_change=lambda: ss.__setitem__("mm_window", ss.mm_window_w))
+        var = ss.mm_trend
+        svg = ui.trend_svg(_series(var), i, ui.VAR_LABELS[var].split("(")[-1].rstrip(")"), TREND_WINDOWS[ss.mm_window],
+                           ui.levels_for_var(ss.mm_alerts, var), _bands(), lambda k: _met_labels()[k])
+        st.markdown(ui.img_html(svg), unsafe_allow_html=True)
     with st.expander("All 19 ASTRA variables + position at this timestamp", expanded=False):
         st.dataframe(pd.DataFrame([{k: rec[k] for k in ASTRA_VARS + ["exercise_type", "pos_x_au", "pos_y_au", "altitude_km", "speed_km_s"]}]),
                      hide_index=True)
     if was and not ss.mm_playing:
-        st.rerun()                                                     # refresh Play/Pause label after the last sample
+        st.rerun()                                                     # refresh the Play/Pause label
 
 
-def render_mission_page(evaluate_rules, render_alerts, status_label):
+def render_console(evaluate_rules):
+    """Mission console shown on the Overview page when this mission is the selected data source."""
     init_state()
     ss = st.session_state
-    if not ss.mm_visited:
-        ss.mm_visited, ss.mm_link = True, True                         # first visit: link dashboards to the replay
+    ui.inject_css()
+    ensure_alerts(evaluate_rules)
     st.subheader("Earth → Mars mission replay")
-    st.warning("SIMULATED, FICTIONAL DATA. Toy two-body trajectory and rule-based crew/cabin model, not a validated "
-               "physiological or spacecraft simulation. Alert thresholds are ASTRA's unchanged illustrative rules.")
+    st.caption("**SIMULATED, FICTIONAL DATA.** Toy two-body trajectory and rule-based crew/cabin model, not a validated physiological "
+               "or spacecraft simulation. Alerts use ASTRA's unchanged illustrative rules.")
     c1, c2, c3, c4 = st.columns([1, 1, 2, 2])
     c1.button("⏸ Pause" if ss.mm_playing else "▶ Play", on_click=_cb_toggle, type="primary")
     c2.button("⏮ Reset", on_click=_cb_reset)
     # widget keys are discarded by Streamlit when the page is left, so mirror them into persistent keys
     c3.select_slider("Playback speed", options=SPEEDS, value=ss.mm_speed, key="mm_speed_w", format_func=lambda v: f"{v}×",
                      on_change=lambda: ss.__setitem__("mm_speed", ss.mm_speed_w))
-    c4.toggle("Drive all ASTRA dashboards from this replay", value=ss.mm_link, key="mm_link_w",
-              on_change=lambda: ss.__setitem__("mm_link", ss.mm_link_w))
+    c4.selectbox("Auto-pause on new hazard", PAUSE_OPTIONS, index=PAUSE_OPTIONS.index(ss.mm_pause_on), key="mm_pause_w",
+                 on_change=lambda: ss.__setitem__("mm_pause_on", ss.mm_pause_w))
     j = st.columns(5)
     for col, (lab, eid) in zip(j[:3], [("⚡ Solar particle event", "SPE"), ("🫂 Crew anomaly", "CREW"), ("🫁 Cabin anomaly", "CABIN")]):
         col.button(lab, on_click=_cb_jump, args=(EVENTS[eid][2],))
     j[3].button("🚀 Liftoff", on_click=_cb_jump, args=(int(PH_START[1]),))
     j[4].button("🛬 Landing", on_click=_cb_jump, args=(N - 1,))
     frag = st.fragment(run_every=TICK if ss.mm_playing else None)(_live)   # timer only while playing
-    frag(evaluate_rules, render_alerts, status_label)
+    frag(evaluate_rules)
     st.download_button("Download the 1,000-row mission telemetry (CSV)", _csv(), "astra_mars_mission_telemetry.csv", "text/csv")
-
-
-# ----------------------------------------------------------------------------- self-test
-def _load_rules(app_path):
-    import ast
-    tree = ast.parse(open(app_path, encoding="utf-8").read())
-    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "evaluate_rules")
-    ns: dict = {}
-    exec(compile(ast.Module([fn], []), app_path, "exec"), ns)
-    return ns["evaluate_rules"]
-
-
-def patch_app(path="app.py"):
-    """Apply the 4 small integration edits to app.py (backup written to app.py.bak). Idempotent."""
-    import re
-    src = open(path, encoding="utf-8").read()
-    if "import mars_mission" in src:
-        print("app.py already patched"); return True
-    edits = [(r"^import streamlit as st\n", "import streamlit as st\nimport mars_mission as mm\n"),
-             (r'"Simulation Lab", "Crew Logs & Records"', '"Simulation Lab", mm.PAGE, "Crew Logs & Records"'),
-             (r"^(page\s*=\s*st\.sidebar\.radio\(.*\)\n)", r"\1mm.sync_session(page)\n"),
-             (r'^elif page == "Crew Logs & Records":', 'elif page == mm.PAGE:\n    mm.render_mission_page(evaluate_rules, render_alerts, status_label)\n\nelif page == "Crew Logs & Records":')]
-    for pat, rep in edits:
-        if len(re.findall(pat, src, flags=re.M)) != 1:
-            print(f"PATCH ABORTED: anchor not found exactly once: {pat!r}. Nothing was changed; use the manual edits."); return False
-    for pat, rep in edits:
-        src = re.sub(pat, rep, src, count=1, flags=re.M)
-    open(path + ".bak", "w", encoding="utf-8").write(open(path, encoding="utf-8").read())
-    open(path, "w", encoding="utf-8").write(src)
-    print("app.py patched (backup: app.py.bak)"); return True
-
-
-def selftest(app_path="app.py"):
-    ok = lambda c, m: (print(("PASS " if c else "FAIL ") + m), c)[1]
-    res = []
-    df = telemetry()
-    res += [ok(len(df) == N, "exactly 1,000 rows"),
-            ok(df.index.is_monotonic_increasing and df.index.is_unique, "timestamps strictly chronological and unique"),
-            ok(df.met_s.iloc[0] < 0 < df.met_s.iloc[-1] and df.phase.iloc[-1].startswith("Entry"), "spans pre-launch -> landing")]
-    res.append(ok(all(k in df for k in ASTRA_VARS), "all 19 ASTRA variables present with exact names"))
-    for k in ASTRA_VARS:
-        want = "int64" if k in INT_VARS else "float64"
-        res.append(ok(str(df[k].dtype) == want and df[k].notna().all() and df[k].between(*RANGES[k]).all(),
-                      f"{k}: {want}, no NaN, inside ASTRA widget range"))
-    res.append(ok(df.phase_id.is_monotonic_increasing and df.phase.nunique() == len(PHASES), "10 mission phases in order"))
-    res.append(ok(abs(df.dist_mars_au.iloc[PH_START[7]]) < 1e-3, "craft reaches Mars at MOI"))
-    rules = _load_rules(app_path)
-    levels, ids = [], []
-    for i in range(N):
-        a = rules(snapshot_values(i))
-        levels.append(("HIGH" if any(x[0] == "HIGH" for x in a) else "REVIEW" if a else "")); ids.append({x[1] for x in a})
-    lv = pd.Series(levels)
-    for eid, (nm, on, pk, hold, end, _t) in EVENTS.items():
-        seg = lv[on:end + 1]
-        res.append(ok((seg != "").any() and (lv[pk] != ""), f"{eid}: alerts during event (peak sample {pk} -> '{lv[pk]}'; "
-                                                          f"{(seg != '').sum()}/{end - on + 1} samples alerting)"))
-        res.append(ok(lv[end] == "" and lv[end + 1] == "", f"{eid}: recovered, no alert at samples {end}-{end + 1}"))
-    res.append(ok(lv[EVENTS["CABIN"][2]] == "HIGH" and {"CO₂", "Oxygen concentration"} <= ids[EVENTS["CABIN"][2]], "CABIN peak raises HIGH CO₂ + O₂ alerts"))
-    res.append(ok("Radiation" in ids[EVENTS["SPE"][2]], "SPE peak raises REVIEW radiation alert"))
-    res.append(ok({"Fatigue", "Sleep", "Mood"} <= ids[EVENTS["CREW"][2]], "CREW peak raises REVIEW fatigue/sleep/mood alerts"))
-    outside = [i for i in range(N) if lv[i] and not any(v[1] <= i <= v[4] for v in EVENTS.values())]
-    res.append(ok(not outside, f"no alerts outside scripted events (found {len(outside)})"))
-    print(f"alert counts -> HIGH:{(lv == 'HIGH').sum()}  REVIEW:{(lv == 'REVIEW').sum()}  none:{(lv == '').sum()}")
-    # state synchronisation (pure-dict stand-in for st.session_state)
-    ss: dict = {}
-    init_state(ss); ss["mm_playing"], ss["mm_speed"] = True, 8
-    seen = []
-    while ss["mm_playing"]:
-        advance(ss); seen.append(ss["mm_idx"])
-    res += [ok(seen == sorted(seen) and seen[-1] == N - 1 and ss["mm_slider"] == ss["mm_idx"], "playback monotonic, stops at last sample, slider == index"),
-            ok(len(seen) == math.ceil((N - 1) / 8), f"speed 8x reaches the end in {len(seen)} ticks")]
-    ss.update(mm_idx=500, mm_playing=True, mm_speed=0.5, mm_acc=0.0); advance(ss); advance(ss)
-    res.append(ok(ss["mm_idx"] == 501 and ss["mm_slider"] == 501, "0.5x speed advances one sample every second tick"))
-    for i in (0, 123, 386, 675, 999):
-        st_: dict = {}
-        s = apply_snapshot(i, st_)
-        good = all(st_[k] == s[k] and type(st_[k]) is (int if k in INT_VARS else float) for k in ASTRA_VARS)
-        res.append(ok(good and rules(snapshot_values(i)) == rules({k: float(st_[k]) for k in ASTRA_VARS}),
-                      f"snapshot {i}: session variables match (names/types) and give identical alerts"))
-    ts = df.index[321]
-    res.append(ok(get_snapshot(ts)["sample"] == 321 and get_snapshot(str(ts))["sample"] == 321, "lookup by timestamp"))
-    svgs = [render_svg(i) for i in range(0, N, 7)] + [render_svg(N - 1)]
-    res.append(ok(all(s.startswith("<svg") and s.endswith("</svg>") for s in svgs), f"{len(svgs)} animation frames render"))
-    print(f"\n{sum(res)}/{len(res)} checks passed")
-    return all(res)
-
-
-if __name__ == "__main__":
-    if "--patch" in sys.argv:
-        rest = [a for a in sys.argv[1:] if not a.startswith("--")]
-        sys.exit(0 if patch_app(rest[0] if rest else "app.py") else 1)
-    if "--selftest" in sys.argv:
-        rest = [a for a in sys.argv[1:] if not a.startswith("--")]
-        sys.exit(0 if selftest(rest[0] if rest else "app.py") else 1)
-    print(telemetry().head())

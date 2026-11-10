@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+import astra_ui
 import mars_mission as mm
 
 st.set_page_config(page_title="ASTRA | Astronaut Health & Mission Simulation", page_icon="🛰️", layout="wide", initial_sidebar_state="expanded")
@@ -22,6 +24,7 @@ st.markdown("""
 h1,h2,h3 { color:#f2f7ff; }
 </style>
 """, unsafe_allow_html=True)
+astra_ui.inject_css()
 
 # ---- Persistent storage (survives browser refreshes and Streamlit reruns on the same filesystem) ----
 def db_connect():
@@ -54,26 +57,39 @@ def utc_now():
 
 init_db()
 
+# ---- Data sources -----------------------------------------------------------------------------------
+# "Manual input" is built in. To add a mission: write a module with the same plug-in interface as
+# mars_mission.py (LABEL, sync_session, render_console - see astra_ui.py) and register it below.
+MANUAL = "Manual input"
+MISSION_SOURCES = {mm.LABEL: mm}
+SOURCES = [MANUAL] + list(MISSION_SOURCES)
+PAGES = ["Overview", "Sensor Lab", "Crew Logs & Records", "Knowledge Base", "Data Export"]
+CREW = ["Crew Member A", "Crew Member B", "Crew Member C"]
+
 DEFAULTS = {
     "heart_rate":76, "spo2":98, "respiration":16, "skin_temp":36.7,
     "systolic":118, "diastolic":78, "fatigue":3, "sleep":7.5,
     "water":2.0, "exercise":30, "exercise_type":"Mixed / not specified", "calories":2200, "mood":7,
     "co2":1000, "oxygen":20.9, "cabin_pressure":101.3, "temperature":22.0,
-    "humidity":45, "particles":5.0, "radiation":0.5, "simulation_minutes":0,
+    "humidity":45, "particles":5.0, "radiation":0.5, "simulation_minutes":0, "crew":CREW[0],
 }
 for key, value in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
+# Streamlit forgets the value of a widget-bound key on any run where that widget is not drawn (i.e. whenever you
+# leave its page). Re-saving the values on every run keeps manual inputs and the crew selection across pages.
+for key in DEFAULTS:
+    st.session_state[key] = st.session_state[key]
 
-MISSIONS = ["Earth Orbit", "Lunar Mission", "Mars Transit"]
-CREW = ["Crew Member A", "Crew Member B", "Crew Member C"]
-page = st.sidebar.radio("MISSION CONSOLE", ["Overview", "Health Monitor", "Environment", "Simulation Lab", mm.PAGE, "Crew Logs & Records", "Mission Library", "Knowledge Base", "Data Export"])
-mm.sync_session(page)
+page = st.sidebar.radio("MISSION CONSOLE", PAGES)
 st.sidebar.markdown("## 🛰️ ASTRA")
 st.sidebar.caption("Astronaut Status • Telemetry • Risk Assessment")
-mission = st.sidebar.selectbox("Mission scenario", MISSIONS)
-crew = st.sidebar.selectbox("Crew member / record", CREW)
-mode = st.sidebar.selectbox("Data source", ["Simulated data", "Manual demonstration inputs"])
+source = st.sidebar.selectbox("Data source", SOURCES, key="data_source")
+mission_mod = MISSION_SOURCES.get(source)
+for _mod in MISSION_SOURCES.values():          # the selected mission feeds the ASTRA variables; the others stay paused
+    _mod.sync_session(_mod is mission_mod, page == "Overview")
+mission = source                                # label stored with saved records
+crew = st.session_state.crew
 st.sidebar.info("DEMO MODE — not connected to real sensors or medical systems.")
 st.sidebar.caption("Record persistence depends on the host's filesystem. For durable production hosting, configure an external database.")
 
@@ -118,125 +134,95 @@ def values_to_db(v):
     return (v["heart_rate"],v["spo2"],v["respiration"],v["skin_temp"],v["systolic"],v["diastolic"],v["fatigue"],v["mood"],v["sleep"],v["water"],v["exercise"],st.session_state.exercise_type,v["calories"],v["co2"],v["oxygen"],v["cabin_pressure"],v["temperature"],v["humidity"],v["particles"],v["radiation"])
 
 vals=current_values(); alerts=evaluate_rules(vals)
-st.markdown(f"""<div class="hero"><div class="eyebrow">MISSION CONTROL / HUMAN SYSTEMS</div><h1 style="margin-bottom:4px;">ASTRA <span style="color:#61d9d0;">//</span> Crew Health Console</h1><div class="muted">Astronaut health trends • cabin telemetry • scenario simulation</div><br><span>{mission.upper()} &nbsp; | &nbsp; {crew.upper()} &nbsp; | &nbsp; {mode.upper()}</span><div class="muted" style="margin-top:12px;font-size:.8rem;">Interface refreshed: {utc_now()}</div></div>""", unsafe_allow_html=True)
+if mission_mod is None:
+    astra_ui.manual_toasts(alerts, st.session_state)     # pop-up when a new hazard appears after a manual edit
+else:
+    st.session_state.pop("_ax_prev_alerts", None)         # the mission console raises its own notifications
+st.markdown(f"""<div class="hero"><div class="eyebrow">MISSION CONTROL / HUMAN SYSTEMS</div><h1 style="margin-bottom:4px;">ASTRA <span style="color:#61d9d0;">//</span> Crew Health Console</h1><div class="muted">Astronaut health trends • cabin telemetry • scenario simulation</div><br><span>{source.upper()}</span><div class="muted" style="margin-top:12px;font-size:.8rem;">Interface refreshed: {utc_now()}</div></div>""", unsafe_allow_html=True)
 
 if page == "Overview":
-    st.subheader("Mission overview")
-    st.caption("Illustrative demonstration values only; not medical thresholds or operational guidance.")
-    cols=st.columns(4)
-    for col,label,value in zip(cols,["Heart rate","SpO₂","Cabin CO₂","Fatigue"],[f"{vals['heart_rate']:.0f} bpm",f"{vals['spo2']:.1f}%",f"{vals['co2']:,.0f} ppm",f"{vals['fatigue']:.0f}/10"]): col.metric(label,value)
-    render_alerts(alerts)
-    st.markdown("### Current environmental review")
-    env_keys=[("oxygen","Oxygen (%)"),("cabin_pressure","Cabin pressure (kPa)"),("temperature","Cabin temperature (°C)"),("humidity","Relative humidity (%)"),("particles","Particles (demo units)"),("radiation","Radiation (illustrative units/hour)")]
-    st.dataframe(pd.DataFrame([{"Measurement":label,"Current value":vals[key]} for key,label in env_keys]),use_container_width=True,hide_index=True)
-    logs=load_health_logs(crew)
-    st.markdown("### Recent saved check-ins")
-    st.dataframe(logs.head(5),use_container_width=True,hide_index=True) if not logs.empty else st.info("No saved check-ins for this crew member yet. Add one in Crew Logs & Records.")
+    if mission_mod is not None:
+        mission_mod.render_console(evaluate_rules)
+    else:
+        st.subheader("Mission overview")
+        st.caption("Illustrative demonstration values only; not medical thresholds or operational guidance.")
+        astra_ui.render_overview(vals, alerts)
+        st.markdown("### Recent saved check-ins")
+        logs=load_health_logs()
+        if not logs.empty:
+            st.dataframe(logs.head(5),use_container_width=True,hide_index=True)
+        else:
+            st.info("No saved check-ins yet. Add one in Crew Logs & Records.")
 
-elif page == "Health Monitor":
-    st.subheader("Crew health monitor")
-    st.caption("Controls update shared app state immediately. Flags are illustrative only.")
-    c1,c2=st.columns(2)
-    with c1:
-        st.markdown("#### Vital signs")
-        st.slider("Heart rate (bpm)",30,180,key="heart_rate")
-        st.slider("Oxygen saturation — SpO₂ (%)",70,100,key="spo2")
-        st.slider("Respiration (breaths/min)",4,40,key="respiration")
-        st.slider("Skin temperature (°C)",30.0,42.0,key="skin_temp",step=0.1)
-        st.slider("Systolic blood pressure (mmHg)",70,200,key="systolic")
-        st.slider("Diastolic blood pressure (mmHg)",40,130,key="diastolic")
-    with c2:
-        st.markdown("#### Crew self-report")
-        st.slider("Fatigue (1–10)",1,10,key="fatigue")
-        st.slider("Sleep in last 24 hours (hours)",0.0,12.0,key="sleep",step=0.5)
-        st.slider("Mood (1–10)",1,10,key="mood")
-        st.number_input("Water intake (litres)",0.0,10.0,key="water",step=0.25)
-        st.number_input("Exercise duration (minutes)",0,300,key="exercise",step=5)
-        st.selectbox("Exercise type",["Mixed / not specified","Resistance","Cardio","Mobility","Rest day","Other"],key="exercise_type")
-        st.number_input("Estimated calorie intake (kcal)",0,10000,key="calories",step=100)
-    render_alerts(evaluate_rules(current_values()))
-    if st.button("Save health snapshot to persistent records",type="primary"):
-        v=current_values()
-        with db_connect() as conn:
-            conn.execute("INSERT INTO health_logs (logged_at,mission,crew,checkin,heart_rate,spo2,respiration,skin_temp,systolic,diastolic,fatigue,mood,sleep_hours,water_litres,exercise_minutes,exercise_type,calories,co2,oxygen,cabin_pressure,temperature,humidity,particles,radiation,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (utc_now(),mission,crew,"Current snapshot",*values_to_db(v),"Saved from Health Monitor"))
-        st.success("Saved to the local database. It should remain after a browser refresh on the same deployment filesystem.")
-
-elif page == "Environment":
-    st.subheader("Cabin & environmental telemetry")
-    st.caption("Every environmental measurement is evaluated using shared illustrative rules.")
-    a,b,c=st.columns(3)
-    with a:
-        st.slider("Carbon dioxide (ppm)",0,20000,key="co2",step=100)
-        st.slider("Oxygen concentration (%)",0.0,30.0,key="oxygen",step=0.1)
-    with b:
-        st.slider("Cabin pressure (kPa)",0.0,150.0,key="cabin_pressure",step=0.5)
-        st.slider("Cabin temperature (°C)",-20.0,50.0,key="temperature",step=0.5)
-    with c:
-        st.slider("Relative humidity (%)",0,100,key="humidity")
-        st.slider("Particle concentration (demo units)",0.0,500.0,key="particles",step=1.0)
-    st.slider("Radiation rate (illustrative units/hour)",0.0,10.0,key="radiation",step=0.1)
-    render_alerts(evaluate_rules(current_values()))
-    st.caption("Actual limits depend on vehicle, sensor, mission and approved procedures. These are not operational thresholds.")
-
-elif page == "Simulation Lab":
-    st.subheader("Simulation laboratory")
-    st.caption("Edit values here and the shared values, overview and alerts update together. This is a rule-based demo, not a physiological model.")
+elif page == "Sensor Lab":
+    locked = mission_mod is not None
+    st.subheader("Sensor lab")
+    st.caption("Crew and cabin sensors in one place. Edit values here and the shared values, overview and alerts update together. This is a rule-based demo, not a physiological model.")
+    if locked:
+        st.info(f"Inputs are read-only because they are driven by the **{source}** replay on the Overview page. Choose **{MANUAL}** as the data source to edit them.")
     q1,q2,q3,q4=st.columns(4)
-    if q1.button("Nominal demo"):
+    if q1.button("Nominal demo",disabled=locked):
         for k,v in {"heart_rate":76,"spo2":98,"respiration":16,"skin_temp":36.7,"systolic":118,"diastolic":78,"fatigue":3,"sleep":7.5,"mood":7,"co2":1000,"oxygen":20.9,"cabin_pressure":101.3,"temperature":22.0,"humidity":45,"particles":5.0,"radiation":0.5}.items(): st.session_state[k]=v
         st.rerun()
-    if q2.button("High CO₂ / low O₂"):
+    if q2.button("High CO₂ / low O₂",disabled=locked):
         st.session_state.co2=6500; st.session_state.oxygen=16.0; st.rerun()
-    if q3.button("Fatigue / low sleep"):
+    if q3.button("Fatigue / low sleep",disabled=locked):
         st.session_state.sleep=4.0; st.session_state.fatigue=9; st.rerun()
-    if q4.button("Combined review"):
+    if q4.button("Combined review",disabled=locked):
         for k,v in {"heart_rate":132,"spo2":94,"respiration":27,"skin_temp":38.5,"systolic":150,"diastolic":95,"fatigue":8,"sleep":4.5,"mood":3,"co2":6200,"oxygen":17.0,"cabin_pressure":101.3,"temperature":30.0,"humidity":78,"particles":75.0,"radiation":2.5}.items(): st.session_state[k]=v
         st.rerun()
-    st.markdown("#### Editable simulation controls")
-    with st.expander("Health and crew inputs",expanded=True):
-        x,y,z=st.columns(3)
-        with x:
-            st.slider("Heart rate (bpm)",30,180,key="heart_rate")
-            st.slider("SpO₂ (%)",70,100,key="spo2")
-            st.slider("Respiration (breaths/min)",4,40,key="respiration")
-            st.slider("Skin temperature (°C)",30.0,42.0,key="skin_temp",step=0.1)
-            st.slider("Systolic BP (mmHg)",70,200,key="systolic")
-            st.slider("Diastolic BP (mmHg)",40,130,key="diastolic")
-        with y:
-            st.slider("Fatigue (1–10)",1,10,key="fatigue")
-            st.slider("Mood (1–10)",1,10,key="mood")
-            st.slider("Sleep (hours)",0.0,12.0,key="sleep",step=0.5)
-            st.number_input("Water (litres)",0.0,10.0,key="water",step=0.25)
-            st.number_input("Exercise (minutes)",0,300,key="exercise",step=5)
-            st.number_input("Calories (kcal)",0,10000,key="calories",step=100)
-        with z:
-            st.slider("CO₂ (ppm)",0,20000,key="co2",step=100)
-            st.slider("Oxygen (%)",0.0,30.0,key="oxygen",step=0.1)
-            st.slider("Cabin pressure (kPa)",0.0,150.0,key="cabin_pressure",step=0.5)
-            st.slider("Temperature (°C)",-20.0,50.0,key="temperature",step=0.5)
-            st.slider("Humidity (%)",0,100,key="humidity")
-            st.slider("Particles (demo units)",0.0,500.0,key="particles",step=1.0)
-            st.slider("Radiation (illustrative units/hour)",0.0,10.0,key="radiation",step=0.1)
-    st.slider("Advance mission time (minutes)",0,1440,key="simulation_minutes",step=15)
+    x,y,z=st.columns(3)
+    with x:
+        st.markdown("#### Vital signs")
+        st.slider("Heart rate (bpm)",30,180,key="heart_rate",disabled=locked)
+        st.slider("SpO₂ (%)",70,100,key="spo2",disabled=locked)
+        st.slider("Respiration (breaths/min)",4,40,key="respiration",disabled=locked)
+        st.slider("Skin temperature (°C)",30.0,42.0,key="skin_temp",step=0.1,disabled=locked)
+        st.slider("Systolic BP (mmHg)",70,200,key="systolic",disabled=locked)
+        st.slider("Diastolic BP (mmHg)",40,130,key="diastolic",disabled=locked)
+    with y:
+        st.markdown("#### Crew self-report")
+        st.slider("Fatigue (1–10)",1,10,key="fatigue",disabled=locked)
+        st.slider("Mood (1–10)",1,10,key="mood",disabled=locked)
+        st.slider("Sleep (hours)",0.0,12.0,key="sleep",step=0.5,disabled=locked)
+        st.number_input("Water (litres)",0.0,10.0,key="water",step=0.25,disabled=locked)
+        st.number_input("Exercise (minutes)",0,300,key="exercise",step=5,disabled=locked)
+        st.selectbox("Exercise type",["Mixed / not specified","Resistance","Cardio","Mobility","Rest day","Other"],key="exercise_type",disabled=locked)
+        st.number_input("Calories (kcal)",0,10000,key="calories",step=100,disabled=locked)
+    with z:
+        st.markdown("#### Cabin environment")
+        st.slider("CO₂ (ppm)",0,20000,key="co2",step=100,disabled=locked)
+        st.slider("Oxygen (%)",0.0,30.0,key="oxygen",step=0.1,disabled=locked)
+        st.slider("Cabin pressure (kPa)",0.0,150.0,key="cabin_pressure",step=0.5,disabled=locked)
+        st.slider("Temperature (°C)",-20.0,50.0,key="temperature",step=0.5,disabled=locked)
+        st.slider("Humidity (%)",0,100,key="humidity",disabled=locked)
+        st.slider("Particles (demo units)",0.0,500.0,key="particles",step=1.0,disabled=locked)
+        st.slider("Radiation (illustrative units/hour)",0.0,10.0,key="radiation",step=0.1,disabled=locked)
+    st.caption("Actual limits depend on vehicle, sensor, mission and approved procedures. These are not operational thresholds.")
+    st.slider("Advance mission time (minutes)",0,1440,key="simulation_minutes",step=15,disabled=locked)
     sim_vals=current_values(); sim_alerts=evaluate_rules(sim_vals)
     st.markdown("#### Simulation response")
     render_alerts(sim_alerts)
     st.write("Status:",status_label(sim_alerts))
     st.json({"mission":mission,"crew":crew,"simulated_minutes":st.session_state.simulation_minutes,"inputs":sim_vals,"status":status_label(sim_alerts),"note":"Illustrative only; no validated physiological or mission model."})
-    if st.button("Save simulation snapshot",type="primary"):
+    s1,s2=st.columns(2)
+    if s1.button("Save simulation snapshot",type="primary"):
         with db_connect() as conn:
             conn.execute("INSERT INTO simulation_logs (saved_at,mission,crew,simulated_minutes,inputs_json,status,alerts_json) VALUES (?,?,?,?,?,?,?)",(utc_now(),mission,crew,int(st.session_state.simulation_minutes),json.dumps(sim_vals),status_label(sim_alerts),json.dumps([x[2] for x in sim_alerts])))
         st.success("Simulation snapshot saved to the local database.")
-
-elif page == mm.PAGE:
-    mm.render_mission_page(evaluate_rules, render_alerts, status_label)
+    if s2.button("Save health snapshot to persistent records"):
+        with db_connect() as conn:
+            conn.execute("INSERT INTO health_logs (logged_at,mission,crew,checkin,heart_rate,spo2,respiration,skin_temp,systolic,diastolic,fatigue,mood,sleep_hours,water_litres,exercise_minutes,exercise_type,calories,co2,oxygen,cabin_pressure,temperature,humidity,particles,radiation,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (utc_now(),mission,crew,"Current snapshot",*values_to_db(sim_vals),"Saved from Sensor Lab"))
+        st.success("Saved to the local database. It should remain after a browser refresh on the same deployment filesystem.")
 
 elif page == "Crew Logs & Records":
     st.subheader("Crew check-ins & historical records")
+    crew = st.selectbox("Crew member / record", CREW, key="crew")
     st.warning("Prototype privacy notice: use fictional/demo data only. Do not enter real sensitive health records into a public demo.")
     st.markdown("### Add a historical or twice-daily check-in")
-    st.caption("Use the date and time fields to backfill older records. Check-ins are saved in SQLite, not just browser session state.")
+    st.caption("Use the date and time fields to backfill older records. Check-ins are saved in SQLite, not just browser session state."
+               + (f" The form is pre-filled from the current {source} sample." if mission_mod is not None else ""))
     with st.form("crew_checkin_form",clear_on_submit=False):
         d1,d2=st.columns(2)
         with d1:
@@ -284,20 +270,23 @@ elif page == "Crew Logs & Records":
             with db_connect() as conn: conn.execute("DELETE FROM health_logs WHERE id=? AND crew=?",(int(delete_id),crew))
             st.success("Record deleted."); st.rerun()
 
-elif page == "Mission Library":
-    st.subheader("Mission scenario library")
-    cards={"Earth Orbit":("Crew routine, exercise, sleep scheduling and cabin environmental trends.","Test nominal values, missing readings and fatigue trends."),"Lunar Mission":("Mission phase changes, surface operations, suit/environment transitions and radiation context.","Compare cabin-mode inputs with a separately documented surface-operation scenario."),"Mars Transit":("Long-duration trend review, sleep and workload patterns, communications constraints and radiation context.","Explore longer timelines and sensor staleness; do not extrapolate this toy model.")}
-    selected=st.selectbox("Explore mission",MISSIONS,index=MISSIONS.index(mission)); st.markdown(f"### {selected}"); st.write("**Monitoring focus:**",cards[selected][0]); st.write("**Suggested simulation:**",cards[selected][1])
-    st.info("Real mission profiles and thresholds must be sourced and validated for the relevant vehicle and mission.")
-    st.markdown("- Which measurements are available in this mission phase?\n- What are the units, calibration needs and data-quality limits?\n- Which approved references define alert criteria?\n- What should happen when data is missing or stale?")
-
 elif page == "Knowledge Base":
     st.subheader("Knowledge base")
-    with st.expander("Why monitor multiple data streams?"): st.write("Health readings, self-reported wellbeing and cabin conditions provide different kinds of information. Display timestamps and limitations rather than assuming one reading explains another.")
-    with st.expander("Why track trends?"): st.write("Trends can show change over time that a single reading misses. Clearly distinguish saved user-entered records from generated demonstration data.")
-    with st.expander("Radiation measurements"): st.write("Count rate, absorbed dose and equivalent dose are different quantities. Record instrument, units and time interval.")
-    with st.expander("AI and automation"): st.write("Automated flags should be explainable and validated. They are not diagnoses or replacements for qualified mission medical staff.")
-    st.markdown("- [NASA Human Research Program](https://www.nasa.gov/hrp/)\n- [NASA Technical Reports Server](https://ntrs.nasa.gov/)\n- [NASA Space Apps Challenge](https://www.spaceappschallenge.org/)")
+    # Add new entries to these two lists; the page renders them automatically.
+    KNOWLEDGE_ITEMS = [
+        ("Why monitor multiple data streams?", "Health readings, self-reported wellbeing and cabin conditions provide different kinds of information. Display timestamps and limitations rather than assuming one reading explains another."),
+        ("Why track trends?", "Trends can show change over time that a single reading misses. Clearly distinguish saved user-entered records from generated demonstration data."),
+        ("Radiation measurements", "Count rate, absorbed dose and equivalent dose are different quantities. Record instrument, units and time interval."),
+        ("AI and automation", "Automated flags should be explainable and validated. They are not diagnoses or replacements for qualified mission medical staff."),
+    ]
+    KNOWLEDGE_LINKS = [
+        ("NASA Human Research Program", "https://www.nasa.gov/hrp/"),
+        ("NASA Technical Reports Server", "https://ntrs.nasa.gov/"),
+        ("NASA Space Apps Challenge", "https://www.spaceappschallenge.org/"),
+    ]
+    for title, body in KNOWLEDGE_ITEMS:
+        with st.expander(title): st.write(body)
+    st.markdown("\n".join(f"- [{name}]({url})" for name, url in KNOWLEDGE_LINKS))
 
 elif page == "Data Export":
     st.subheader("Saved data & export")
