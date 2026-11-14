@@ -681,7 +681,7 @@ elif page == "Data Export":
 st.markdown("---")
 st.header("Human Body in Space")
 st.write(
-    "Explore how the space environment affects"
+    "Explore how the space environment affects "
     "the human body and its physiological adaptations."
 )
 st.image(
