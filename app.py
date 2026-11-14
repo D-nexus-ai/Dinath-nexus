@@ -677,6 +677,18 @@ elif page == "Data Export":
     st.write("- Exported values are demonstration inputs, not real astronaut health records.")
     st.write("- The SQLite database is stored beside `app.py`. Some cloud hosts may reset local files; use an external managed database for guaranteed long-term storage across redeployments/restarts.")
     st.write("- Never put real sensitive health data, passwords, API keys or access tokens into a public repository.")
+    
+st.markdown("---")
+st.header("Human Body in Space")
+st.write(
+    "Explore how the space environment affects"
+    "the human body and its physiological adaptations."
+)
+st.image(
+    "csa_human_body.jpg.jpg",
+    caption="Canadian Space Agency - Human Body in Space",
+    use_container_width=true
+)
 
 st.markdown("---")
 st.caption("ASTRA prototype • Educational competition project • Illustrative rules only • Not for clinical or flight use")
