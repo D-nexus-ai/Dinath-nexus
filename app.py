@@ -537,12 +537,12 @@ elif page == "Knowledge Base":
                 use_container_width=True,
             )
         else:
-            st.markdown("""
-            <div class="section-card" style="min-height:240px;display:flex;flex-direction:column;justify-content:center;">
-              <div class="eyebrow">INFOGRAPHIC ASSET</div>
-              <h4 style="margin:6px 0;color:#f2f7ff;">CSA Human Body in Space Infographic</h4>
-            </div>
-            """, unsafe_allow_html=True)
+       st.markdown(
+           st.image(
+               str(Path(__file__).with_name("csa_human_body.jpg.jpg")) ,
+               caption="CSA Human Body in Space - Canadian Space Agency",
+               use_container_width=True
+           )
     with desc_col:
         st.markdown("""
         <div class="section-card">
