@@ -523,16 +523,8 @@ elif page == "Knowledge Base":
 
     st.markdown("### How space affects the human body")
     st.caption("Canadian Space Agency visual overview of physiological adaptations during spaceflight.")
-    img_col, desc_col = st.columns([1.25, 1])
-    with img_col:
-        csa_candidates = [
-            Path(__file__).with_name(name)
-            for name in ("csa_human_body.jpg", "csa_human_body.jpeg", "csa_human_body.png", "csa_human_body.webp")
-        ]
-        csa_image_path = next((p for p in csa_candidates if p.exists()), None)
-        if csa_image_path is not None:
-            st.image(
-                str(csa_image_path),
+    st.image(
+        str(Path(__file__).with_name("csa_human_body.jpg.jpg)) ,
                 caption="How does space affect the human body? — Infographic (Credit: Canadian Space Agency)",
                 use_container_width=True,
             )
