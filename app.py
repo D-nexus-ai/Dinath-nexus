@@ -687,7 +687,7 @@ st.write(
 st.image(
     "csa_human_body.jpg.jpg",
     caption="Canadian Space Agency - Human Body in Space",
-    use_container_width=true
+    use_container_width=True
 )
 
 st.markdown("---")
