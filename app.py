@@ -536,13 +536,7 @@ elif page == "Knowledge Base":
                 caption="How does space affect the human body? — Infographic (Credit: Canadian Space Agency)",
                 use_container_width=True,
             )
-        else:
-       st.markdown(
-           st.image(
-               str(Path(__file__).with_name("csa_human_body.jpg.jpg")) ,
-               caption="CSA Human Body in Space - Canadian Space Agency",
-               use_container_width=True
-           )
+ 
     with desc_col:
         st.markdown("""
         <div class="section-card">
