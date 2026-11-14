@@ -541,7 +541,6 @@ elif page == "Knowledge Base":
             <div class="section-card" style="min-height:240px;display:flex;flex-direction:column;justify-content:center;">
               <div class="eyebrow">INFOGRAPHIC ASSET</div>
               <h4 style="margin:6px 0;color:#f2f7ff;">CSA Human Body in Space Infographic</h4>
-              <p class="muted" style="font-size:.92rem;">Save the downloaded CSA infographic image as <code>csa_human_body.jpg</code> (or <code>.png</code>) in the same repository folder as <code>app.py</code> to display it directly here.</p>
             </div>
             """, unsafe_allow_html=True)
     with desc_col:
@@ -677,18 +676,6 @@ elif page == "Data Export":
     st.write("- Exported values are demonstration inputs, not real astronaut health records.")
     st.write("- The SQLite database is stored beside `app.py`. Some cloud hosts may reset local files; use an external managed database for guaranteed long-term storage across redeployments/restarts.")
     st.write("- Never put real sensitive health data, passwords, API keys or access tokens into a public repository.")
-    
-st.markdown("---")
-st.header("Human Body in Space")
-st.write(
-    "Explore how the space environment affects "
-    "the human body and its physiological adaptations."
-)
-st.image(
-    "csa_human_body.jpg.jpg",
-    caption="Canadian Space Agency - Human Body in Space",
-    use_container_width=True
-)
 
 st.markdown("---")
 st.caption("ASTRA prototype • Educational competition project • Illustrative rules only • Not for clinical or flight use")
